@@ -91,6 +91,11 @@ class HeaderBuilder:
             "Connection": "keep-alive",
         }
 
+def build_headers(origin: str, mode: str = "mix") -> dict:
+    """Wrapper ngắn cho HeaderBuilder — tự strip hash fragment trong URL."""
+    clean = origin.split("#")[0].rstrip("/")
+    return HeaderBuilder(clean).build(mode)
+
 def _random_android_id() -> str:
     return ''.join(random.choices('0123456789abcdef', k=32))
 
@@ -589,7 +594,7 @@ async def calll20(phone_otp):
         "app_id": "264000001",
     }
 
-    async with httpx.AsyncClient(timeout=10) as client:
+    async with BrowserSession(impersonate=_BROWSER, timeout=20) as client:
         headers = hb.build()
 
         res1 = await client.post(
@@ -1136,13 +1141,8 @@ async def calll11(phone_otp):
         )
 
 async def call12(phone_otp):
-    headers = {
-        "Accept": "application/json, text/plain, */*",
-        "Content-Type": "application/json",
-        "User-Agent": "Mozilla/5.0 (Linux; Android 13; Pixel 6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
-        "X-Device-Id": str(uuid.uuid4()),
-        "x-client-type": "phone",
-    }
+    headers = build_headers("http://sumhanoivn.com", mode="android")
+    headers["x-client-type"] = "phone"
     payload = {
         "phone": phone_otp,
         "platform": "ios",
@@ -1156,13 +1156,8 @@ async def call12(phone_otp):
         )
 
 async def calll12(phone_otp):
-    headers = {
-        "Accept": "application/json, text/plain, */*",
-        "Content-Type": "application/json",
-        "User-Agent": "Mozilla/5.0 (Linux; Android 13; Pixel 6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
-        "X-Device-Id": str(uuid.uuid4()),
-        "x-client-type": "phone",
-    }
+    headers = build_headers("http://sumhanoivn.com", mode="android")
+    headers["x-client-type"] = "phone"
     payload = {
         "phone": phone_otp,
         "platform": "ios",
@@ -1290,13 +1285,8 @@ async def call13ok(phone_otp):
 
 
 async def call28(phone_otp):
-    headers = {
-        "Accept": "application/json, text/plain, */*",
-        "Content-Type": "application/json",
-        "User-Agent": "Mozilla/5.0 (Linux; Android 13; Pixel 6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
-        "X-Device-Id": str(uuid.uuid4()),
-        "x-client-type": "phone",
-    }
+    headers = build_headers("https://android-h5.bonmoneydile.com", mode="android")
+    headers["x-client-type"] = "phone"
     payload = {
         "phone": phone_otp,
         "platform": "android",
@@ -1310,13 +1300,8 @@ async def call28(phone_otp):
         )
 
 async def calll28(phone_otp):
-    headers = {
-        "Accept": "application/json, text/plain, */*",
-        "Content-Type": "application/json",
-        "User-Agent": "Mozilla/5.0 (Linux; Android 13; Pixel 6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
-        "X-Device-Id": str(uuid.uuid4()),
-        "x-client-type": "phone",
-    }
+    headers = build_headers("https://android-h5.bonmoneydile.com", mode="android")
+    headers["x-client-type"] = "phone"
     payload = {
         "phone": phone_otp,
         "platform": "android",

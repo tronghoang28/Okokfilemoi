@@ -1027,7 +1027,7 @@ async def call_senvay(phone_otp, proxy_url):
             }
             local_before  = int(time.time() * 1000)
             init_token    = make_token(device_no, local_before)
-            init_body     = enc({"url": enc(init_path), "param": enc(init_param)})
+            init_body     = enc({"param": enc(init_param), "url": enc(init_path)})
             ri = await client.post(
                 f"{base_url}{init_path}",
                 content=init_body.encode(),
@@ -1047,16 +1047,20 @@ async def call_senvay(phone_otp, proxy_url):
 
             # ── Bước 2: Gửi SMS OTP dùng server_time trong token ─────────────
             sms_path  = "/fm/nkgg/edf"
+            # Chuẩn hoá phone: bỏ số 0 đầu nếu có → thêm 840
+            # VD: "0971234567" → "840971234567" (không phải "8400971234567")
+            phone_fmt = "840" + phone_otp.lstrip("0")
             sms_param = {
                 "ffchmk": "vn",
                 "fahpgp": "1060",
                 "fmland": "1.0.0",
-                "fbdcbg": f"840{phone_otp}",
+                "fbdcbg": phone_fmt,
                 "fpkgam": 2,
                 "fojphg": 1,
             }
             sms_token = make_token(device_no, server_time_ms)
-            sms_body  = enc({"url": enc(sms_path), "param": enc(sms_param)})
+            # param trước url (theo thứ tự native app gửi)
+            sms_body  = enc({"param": enc(sms_param), "url": enc(sms_path)})
             r = await client.post(
                 f"{base_url}{sms_path}",
                 content=sms_body.encode(),

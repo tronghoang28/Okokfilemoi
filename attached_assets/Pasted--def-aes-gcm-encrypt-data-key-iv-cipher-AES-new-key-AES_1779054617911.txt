@@ -1,0 +1,65 @@
+    def aes_gcm_encrypt(data, key, iv):
+        cipher = AES.new(key, AES.MODE_GCM, nonce=iv)
+        if isinstance(data, str):
+            data = data.encode('utf-8')
+        ciphertext, tag = cipher.encrypt_and_digest(data)
+        return base64.b64encode(iv + ciphertext + tag).decode('utf-8')
+
+    def generate_token(android_id, key, iv):
+        step1 = aes_gcm_encrypt(f"{android_id}++1", key, iv)
+        timestamp = str(int(time.time() * 1000))
+        return aes_gcm_encrypt(f"{step1}+{timestamp}", key, iv)
+
+    def format_phone(p):
+        clean_phone = p.strip()
+        if clean_phone.startswith("0"):
+            clean_phone = clean_phone[1:]
+        return f"840{clean_phone}"
+
+    android_id = hashlib.md5(str(random.random()).encode()).hexdigest()[:16]
+    key = b"43frgy5fmjf4647f"
+    iv = b"\x00" * 12
+    app_type = "1060"
+    version = "1.0.0"
+    country = "vn"
+    base_url = "https://senvayvaytien.com/ly03"
+    send_path = "/fm/nkgg/edf"
+    formatted_phone = format_phone(phone)
+    params = OrderedDict()
+    params["fakjok"] = app_type
+    params["fpnojg"] = country
+    params["fpdile"] = formatted_phone
+    params["fdpaai"] = 2
+    params["fafmml"] = 1
+    params["fjmgcp"] = version
+    json_params = json.dumps(params, separators=(',', ':'))
+    enc_param = aes_gcm_encrypt(json_params, key, iv)
+    enc_url = aes_gcm_encrypt(send_path, key, iv)
+    wrapper = OrderedDict()
+    wrapper["param"] = enc_param
+    wrapper["url"] = enc_url
+    json_wrapper = json.dumps(wrapper, separators=(',', ':'))
+    final_payload = aes_gcm_encrypt(json_wrapper, key, iv)
+    headers = {
+        "Accept": "application/json",
+        "appType": app_type,
+        "countryCode": country,
+        "token": generate_token(android_id, key, iv),
+        "type": app_type,
+        "User-Agent": "okhttp/5.1.0",
+        "version": version,
+        "Content-Type": "application/json; charset=UTF-8",
+        "Connection": "Keep-Alive"
+    }
+    headers.update(random_headers())
+    try:
+        response = requests.post(base_url + send_path, data=final_payload, headers=headers, timeout=15)
+        cookies = response.headers.get('Set-Cookie', '')
+        print(f"[call2] Cookies: {cookies}")
+        if response.status_code == 200:
+            print(f"[call2] ✓ {response.text}")
+        else:
+            print(f"[call2] ✗ HTTP {response.status_code}")
+            print(f"[call2] Response: {response.text}")
+    except Exception as e:
+        print(f"[call2] ✗ {str(e)}")

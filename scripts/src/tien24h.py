@@ -1,23 +1,15 @@
 """
-Tien24h OTP script — dùng Playwright để lấy Firebase AppCheck token.
+Tien24h OTP — gửi SMS OTP không cần GUI.
 
-Cài đặt trên VPS:
-    pip install playwright httpx
-    playwright install chromium
-    playwright install-deps chromium
+Yêu cầu: chạy tien24h_appcheck.py trước để có tien24h_jwt.json, hoặc đặt lịch
+cron refresh token mỗi 50 phút.
 
 Cách dùng:
     python tien24h.py 0945987331
-    python tien24h.py 0945987331 voice   # gọi thoại (cần đăng nhập trước)
 
-Cơ chế:
-  1. GET  /api/user/app/common/secret  → verifySignSecret
-  2. Playwright mở tien24hpro.com/login → intercepte Firebase AppCheck JWT (TTL 1h, cache 55 phút)
-  3. POST /api/user/app/login/sms với sign + timestamp + X-Firebase-AppCheck
-
-Sign formula (đã reverse-engineer từ store-Dy6IrkuN.js):
+Sign formula (reverse-engineer từ store-Dy6IrkuN.js — xác nhận 100%):
     app_md5 = MD5("tien24hh5")
-    raw     = f"{app_md5}*|*{secret}*|*{JSON.stringify(sorted_body)}*|*{timestamp_ms}"
+    raw     = f"{app_md5}*|*{secret}*|*{JSON(sorted_body)}*|*{timestamp_ms}"
     sign    = MD5(raw).lower()
 """
 
@@ -26,26 +18,21 @@ import asyncio
 import hashlib
 import json
 import time
-from typing import Optional
+from pathlib import Path
 
 import httpx
-from playwright.async_api import async_playwright
 
 # ─── Config ───────────────────────────────────────────────────────────────────
 BASE       = "https://api.tien-24h.com"
-SITE       = "https://www.tien24hpro.com"
 APPCODE    = "tien24hh5"
 VERSION    = "1.0.0"
 MOBILE_T   = "1"
 APP_MD5    = hashlib.md5(APPCODE.encode()).hexdigest()   # ae55ea0fc3a84eb85ce6b30c6945cad1
 
-# Firebase AppCheck
-APPCHECK_EXCHANGE_PATTERN = "exchangeRecaptchaEnterpriseToken"
-LOGIN_PAGE = f"{SITE}/login"
+JWT_FILE   = Path(__file__).parent / "tien24h_jwt.json"
 
-# Token cache: (token_str, expires_at_unix)
-_appcheck_cache: Optional[tuple[str, float]] = None
-_secret_cache:   Optional[tuple[str, float]] = None   # cache 5 phút
+# Runtime cache secret (5 phút)
+_secret_cache: tuple[str, float] | None = None
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -54,12 +41,6 @@ def _md5(s: str) -> str:
 
 
 def _make_sign(body: dict, secret: str, ts: str) -> str:
-    """
-    sign = MD5( MD5(appCode) *|* secret *|* JSON(sorted_body) *|* timestamp )
-    Đã xác nhận 100% qua sniffed requests:
-      index: 25bff74f1a0a043ce9dddc88ef1dae30 ✅
-      sms:   9eced772c2ebbea93c0737a864327794 ✅
-    """
     sorted_body = json.dumps(
         dict(sorted(body.items())), separators=(",", ":"), ensure_ascii=False
     )
@@ -75,6 +56,35 @@ def _base_headers() -> dict:
         "app-version":  VERSION,
         "lang":         "vi_VN",
     }
+
+
+# ─── AppCheck token — đọc từ file ─────────────────────────────────────────────
+def _load_appcheck_token(jwt_file: Path = JWT_FILE) -> str:
+    """
+    Đọc Firebase AppCheck JWT từ tien24h_jwt.json (do tien24h_appcheck.py tạo ra).
+    Báo lỗi rõ ràng nếu file chưa tồn tại hoặc token đã hết hạn.
+    """
+    if not jwt_file.exists():
+        raise FileNotFoundError(
+            f"Chưa có file token: {jwt_file}\n"
+            "Chạy trước: python tien24h_appcheck.py"
+        )
+    data = json.loads(jwt_file.read_text(encoding="utf-8"))
+    token      = data.get("token", "")
+    expires_at = data.get("expires_at", 0.0)
+
+    if not token:
+        raise ValueError(f"File {jwt_file} không chứa token hợp lệ.")
+
+    remaining = expires_at - time.time()
+    if remaining <= 0:
+        raise RuntimeError(
+            f"Firebase AppCheck token đã hết hạn ({jwt_file}).\n"
+            "Chạy lại: python tien24h_appcheck.py"
+        )
+
+    print(f" [AppCheck] token còn hiệu lực {int(remaining // 60)} phút {int(remaining % 60)} giây")
+    return token
 
 
 # ─── Secret ───────────────────────────────────────────────────────────────────
@@ -94,79 +104,10 @@ async def _get_secret() -> str:
     return secret
 
 
-# ─── Firebase AppCheck token (Playwright) ─────────────────────────────────────
-async def _get_appcheck_token() -> str:
-    """
-    Mở tien24hpro.com/login bằng Playwright headless, intercepte phản hồi từ
-    Firebase AppCheck (exchangeRecaptchaEnterpriseToken) để lấy JWT token.
-    Token valid 3600 giây; cache lại 55 phút.
-    """
-    global _appcheck_cache
-    now = time.time()
-    if _appcheck_cache and now < _appcheck_cache[1]:
-        print(" [AppCheck] dùng token cache")
-        return _appcheck_cache[0]
-
-    print(" [AppCheck] đang lấy token qua Playwright...")
-    token_holder: list[str] = []
-
-    async with async_playwright() as pw:
-        browser = await pw.chromium.launch(
-            headless=True,
-            args=["--no-sandbox", "--disable-dev-shm-usage"],
-        )
-        ctx = await browser.new_context(
-            user_agent=(
-                "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) "
-                "AppleWebKit/605.1.15 (KHTML, like Gecko) "
-                "Version/18.1 Mobile/15E148 Safari/604.1"
-            ),
-            viewport={"width": 390, "height": 844},
-            locale="vi-VN",
-        )
-        page = await ctx.new_page()
-
-        async def _on_response(resp):
-            if APPCHECK_EXCHANGE_PATTERN in resp.url and not token_holder:
-                try:
-                    body = await resp.json()
-                    t = body.get("token", "")
-                    if t:
-                        token_holder.append(t)
-                except Exception:
-                    pass
-
-        page.on("response", _on_response)
-
-        try:
-            await page.goto(LOGIN_PAGE, wait_until="domcontentloaded", timeout=35_000)
-        except Exception:
-            pass
-
-        # Chờ tối đa 25 giây để AppCheck khởi tạo + trao đổi token
-        for _ in range(50):
-            if token_holder:
-                break
-            await asyncio.sleep(0.5)
-
-        await browser.close()
-
-    if not token_holder:
-        raise RuntimeError(
-            "Không lấy được Firebase AppCheck token — "
-            "kiểm tra playwright install chromium + playwright install-deps chromium"
-        )
-
-    token = token_holder[0]
-    _appcheck_cache = (token, now + 3300)   # cache 55 phút
-    print(f" [AppCheck] token lấy thành công (cache 55 phút): {token[:40]}...")
-    return token
-
-
 # ─── SMS OTP ──────────────────────────────────────────────────────────────────
-async def send_sms(phone: str) -> bool:
+async def send_sms(phone: str, jwt_file: Path = JWT_FILE) -> bool:
     secret = await _get_secret()
-    token  = await _get_appcheck_token()
+    token  = _load_appcheck_token(jwt_file)
 
     body = {
         "appCode":    APPCODE,
@@ -190,9 +131,9 @@ async def send_sms(phone: str) -> bool:
 
     ok = d.get("code") == 200
     if ok:
-        print(f" ✅ Tien24h SMS {phone}  {d.get('message','')}")
+        print(f" ✅ Tien24h SMS {phone}  {d.get('message', '')}")
     else:
-        print(f" ✘ Tien24h SMS code={d.get('code')} msg={d.get('message','')!r}")
+        print(f" ✘ Tien24h SMS code={d.get('code')} msg={d.get('message', '')!r}")
     return ok
 
 

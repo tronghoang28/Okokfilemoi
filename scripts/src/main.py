@@ -13,6 +13,7 @@ import json
 import base64
 import io
 from typing import Optional, Dict, Tuple
+from tien24h import send_sms as tien24h_sms
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad, unpad
 from PIL import ImageFile, Image
@@ -1565,6 +1566,8 @@ async def main():
         (call17_okay,         15),
         (call_vvay,          15),
         (calll_vvay,         15),
+        (call_vvay_h5,       15),
+        (tien24h_sms,        20),
     ]
     async def safe_call(func, phone_otp):
         name = fn.__name__

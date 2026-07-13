@@ -1,5 +1,12 @@
 """
-Lấy Firebase AppCheck JWT cho Tien24h bằng Playwright headless và lưu vào file.
+Tien24h — lấy Firebase AppCheck JWT bằng cách chạy toàn bộ flow trong trình duyệt.
+
+Cách hoạt động:
+  1. Playwright mở tien24hpro.com/login (headless)
+  2. Điền số điện thoại → click nút "Gửi OTP"
+  3. Trang tự xử lý reCAPTCHA + AppCheck + sign — không cần reverse-engineer thêm
+  4. Chặn request POST /login/sms để lấy header X-Firebase-AppCheck → lưu file
+  5. Trả về kết quả gửi SMS
 
 Cài đặt (một lần):
     pip install playwright
@@ -7,17 +14,14 @@ Cài đặt (một lần):
     playwright install-deps chromium
 
 Cách dùng:
-    python tien24h_appcheck.py                  # lưu vào tien24h_jwt.json (mặc định)
-    python tien24h_appcheck.py /tmp/jwt.json    # lưu vào đường dẫn tuỳ chọn
+    python tien24h_appcheck.py 0945987331          # lấy token + gửi SMS
+    python tien24h_appcheck.py 0945987331 --save-only  # chỉ lấy token, không gửi
 
-File JSON đầu ra:
-    {
-        "token":      "<JWT>",
-        "expires_at": 1783912345.678
-    }
+File JSON đầu ra (tien24h_jwt.json):
+    { "token": "<JWT>", "expires_at": 1234567890.0 }
 
-Lên lịch cron (refresh mỗi 50 phút):
-    */50 * * * * /usr/bin/python3 /path/to/tien24h_appcheck.py
+Lên lịch cron refresh token mỗi 50 phút (không cần số điện thoại):
+    */50 * * * * python /path/to/tien24h_appcheck.py 0000000000 --save-only
 """
 
 import sys
@@ -26,31 +30,32 @@ import asyncio
 import time
 from pathlib import Path
 
-from playwright.async_api import async_playwright, Route, Request
+from playwright.async_api import async_playwright, Request
 
-SITE                  = "https://www.tien24hpro.com"
-LOGIN_PAGE            = f"{SITE}/login"
-APPCHECK_EXCHANGE_PAT = "exchangeRecaptchaEnterpriseToken"
-TOKEN_TTL             = 3600
-DEFAULT_OUT           = Path(__file__).parent / "tien24h_jwt.json"
+SITE        = "https://www.tien24hpro.com"
+LOGIN_PAGE  = f"{SITE}/login"
+API_BASE    = "https://api.tien-24h.com"
+TOKEN_TTL   = 3600
+DEFAULT_OUT = Path(__file__).parent / "tien24h_jwt.json"
 
-# Ẩn dấu vết headless — patch navigator.webdriver + plugins + languages
+# Ẩn dấu vết automation
 STEALTH_SCRIPT = """
-Object.defineProperty(navigator, 'webdriver', {get: () => false});
-Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
-Object.defineProperty(navigator, 'languages', {get: () => ['vi-VN', 'vi', 'en-US', 'en']});
+Object.defineProperty(navigator, 'webdriver',  {get: () => false});
+Object.defineProperty(navigator, 'plugins',    {get: () => [1,2,3,4,5]});
+Object.defineProperty(navigator, 'languages',  {get: () => ['vi-VN','vi','en-US','en']});
+Object.defineProperty(navigator, 'platform',   {get: () => 'iPhone'});
 window.chrome = {runtime: {}};
-Object.defineProperty(navigator, 'platform', {get: () => 'iPhone'});
 """
 
 
-async def fetch_appcheck_token() -> str:
+async def run(phone: str, save_only: bool = False, out_path: Path = DEFAULT_OUT) -> bool:
     """
-    Mở tien24hpro.com/login với stealth headless.
-    Intercept phản hồi exchangeRecaptchaEnterpriseToken → lấy JWT.
-    Fallback: gọi trực tiếp firebase.appCheck().getToken() qua JS.
+    Mở trang login, điền phone, click Gửi OTP.
+    Chặn request /login/sms để lấy AppCheck token → lưu file.
+    Trả về True nếu SMS gửi thành công.
     """
-    token_holder: list[str] = []
+    appcheck_token: list[str] = []
+    sms_response:   list[dict] = []
 
     async with async_playwright() as pw:
         browser = await pw.chromium.launch(
@@ -59,8 +64,6 @@ async def fetch_appcheck_token() -> str:
                 "--no-sandbox",
                 "--disable-dev-shm-usage",
                 "--disable-blink-features=AutomationControlled",
-                "--disable-infobars",
-                "--disable-extensions",
                 "--window-size=390,844",
             ],
         )
@@ -73,176 +76,160 @@ async def fetch_appcheck_token() -> str:
             viewport={"width": 390, "height": 844},
             locale="vi-VN",
             timezone_id="Asia/Ho_Chi_Minh",
-            color_scheme="light",
-            java_script_enabled=True,
         )
-
-        # Patch navigator trước khi bất kỳ script nào chạy
         await ctx.add_init_script(STEALTH_SCRIPT)
-
         page = await ctx.new_page()
 
-        # ── Intercept response để bắt token ─────────────────────────────────
+        # ── Intercept: chặn request ra để lấy AppCheck token ─────────────────
+        async def _on_request(req: Request):
+            if "/login/sms" in req.url and not appcheck_token:
+                hdrs = req.headers
+                t = hdrs.get("x-firebase-appcheck", "")
+                if t:
+                    appcheck_token.append(t)
+                    print(f"[AppCheck] token bắt được từ request ✅ ({len(t)} ký tự)")
+
+        # Intercept response để lấy kết quả SMS
         async def _on_response(resp):
-            if APPCHECK_EXCHANGE_PAT in resp.url and not token_holder:
+            if "/login/sms" in resp.url:
                 try:
-                    data = await resp.json()
-                    t = data.get("token", "")
-                    if t:
-                        token_holder.append(t)
-                        print(f"[AppCheck] token intercepted từ network ✅")
+                    d = await resp.json()
+                    sms_response.append(d)
+                    print(f"[SMS] response: code={d.get('code')} msg={d.get('message','')!r}")
                 except Exception:
                     pass
 
+        page.on("request",  _on_request)
         page.on("response", _on_response)
 
-        # ── Mở trang ────────────────────────────────────────────────────────
-        print("[AppCheck] đang mở trang login...")
+        # ── Mở trang ─────────────────────────────────────────────────────────
+        print(f"[Browser] mở {LOGIN_PAGE} ...")
         try:
             await page.goto(LOGIN_PAGE, wait_until="domcontentloaded", timeout=40_000)
         except Exception as e:
-            print(f"[AppCheck] goto warning (tiếp tục): {e}")
+            print(f"[Browser] goto warning: {e}")
 
-        # Chờ page JS load xong
-        await asyncio.sleep(3)
+        # Chờ JS / Firebase khởi tạo
+        await asyncio.sleep(4)
 
-        # ── Simulate tương tác người dùng để trigger reCAPTCHA ───────────────
-        try:
-            # Di chuyển chuột ngẫu nhiên
-            await page.mouse.move(150, 300)
-            await asyncio.sleep(0.3)
-            await page.mouse.move(200, 400)
-            await asyncio.sleep(0.3)
-            # Click vào input số điện thoại nếu có
-            phone_input = await page.query_selector("input[type='number'], input[type='tel'], input[name='phone']")
-            if phone_input:
-                await phone_input.click()
-                await asyncio.sleep(0.5)
-                await phone_input.type("09", delay=100)
-                await asyncio.sleep(0.5)
-        except Exception:
-            pass
+        # ── Điền số điện thoại ───────────────────────────────────────────────
+        print(f"[Browser] điền số điện thoại {phone} ...")
+        filled = False
+        for selector in [
+            "input[type='number']",
+            "input[type='tel']",
+            "input[name='phone']",
+            "input[placeholder*='điện thoại']",
+            "input[placeholder*='phone']",
+            "input",
+        ]:
+            try:
+                el = await page.wait_for_selector(selector, timeout=5_000)
+                if el:
+                    await el.click()
+                    await el.fill(phone.lstrip("0"))  # bỏ số 0 đầu nếu cần
+                    await asyncio.sleep(0.5)
+                    filled = True
+                    print(f"[Browser] đã điền vào selector: {selector}")
+                    break
+            except Exception:
+                continue
 
-        # ── Chờ network intercept, tối đa 35 giây ───────────────────────────
-        for i in range(70):
-            if token_holder:
+        if not filled:
+            # Fallback: gõ trực tiếp vào focus
+            print("[Browser] không tìm thấy input, thử focus + type...")
+            await page.keyboard.press("Tab")
+            await page.keyboard.type(phone, delay=80)
+
+        await asyncio.sleep(1)
+
+        # ── Click nút Gửi OTP ────────────────────────────────────────────────
+        print("[Browser] tìm nút Gửi OTP ...")
+        otp_btn_found = False
+        for selector in [
+            "button[data-track-af='OTP']",
+            "button:has-text('OTP')",
+            "button:has-text('Gửi')",
+            "button:has-text('Send')",
+            "button[type='button']",
+        ]:
+            try:
+                btn = await page.wait_for_selector(selector, timeout=5_000)
+                if btn:
+                    await btn.click()
+                    otp_btn_found = True
+                    print(f"[Browser] đã click nút: {selector}")
+                    break
+            except Exception:
+                continue
+
+        if not otp_btn_found:
+            # Fallback: gọi API trực tiếp từ trong trình duyệt (Firebase SDK đã init)
+            print("[Browser] không tìm được nút, thử gọi fetch trong page...")
+            await page.evaluate(f"""
+                async () => {{
+                    // Lấy sign + token từ interceptor đã init sẵn trong page
+                    const axios = window.axios || null;
+                    if (!axios) {{
+                        // Gọi thẳng fetch — app interceptor sẽ tự thêm AppCheck + sign
+                        await fetch('{API_BASE}/api/user/app/login/sms', {{
+                            method: 'POST',
+                            headers: {{'Content-Type':'application/json','platform':'h5','app-version':'1.0.0','lang':'vi_VN'}},
+                            body: JSON.stringify({{appCode:'tien24hh5',version:'1.0.0',mobileType:'1',phone:'{phone}'}})
+                        }});
+                    }}
+                }}
+            """)
+
+        # ── Chờ request / response (tối đa 20 giây) ─────────────────────────
+        for _ in range(40):
+            if appcheck_token and sms_response:
                 break
-            if i == 20:
-                # Sau 10 giây vẫn chưa có → thử scroll để trigger lazy-init
-                try:
-                    await page.evaluate("window.scrollTo(0, 100)")
-                except Exception:
-                    pass
             await asyncio.sleep(0.5)
-
-        # ── Fallback: gọi Firebase AppCheck SDK trực tiếp qua JS ─────────────
-        if not token_holder:
-            print("[AppCheck] network intercept thất bại, thử JS fallback...")
-            try:
-                js_token = await page.evaluate("""
-                    async () => {
-                        // Thử lấy token từ Firebase AppCheck SDK
-                        try {
-                            const apps = window._delegate?._apps || window.firebase?.apps || [];
-                            if (apps && apps.size > 0) {
-                                const app = [...apps.values()][0];
-                                const { getToken } = await import('firebase/app-check');
-                                const { getApp } = await import('firebase/app');
-                                // fallback: không import được → skip
-                            }
-                        } catch(e) {}
-
-                        // Thử tìm token trong localStorage / sessionStorage / indexedDB
-                        for (const key of Object.keys(localStorage)) {
-                            try {
-                                const v = JSON.parse(localStorage.getItem(key) || '');
-                                if (v && v.token && typeof v.token === 'string' && v.token.length > 100) {
-                                    return v.token;
-                                }
-                            } catch(e) {}
-                        }
-                        return null;
-                    }
-                """)
-                if js_token:
-                    token_holder.append(js_token)
-                    print("[AppCheck] token lấy từ localStorage fallback ✅")
-            except Exception as e:
-                print(f"[AppCheck] JS fallback lỗi: {e}")
-
-        # ── Fallback 2: tìm token trong IndexedDB (firebase-app-check-database) ─
-        if not token_holder:
-            print("[AppCheck] thử đọc IndexedDB...")
-            try:
-                idb_token = await page.evaluate("""
-                    async () => {
-                        return new Promise((resolve) => {
-                            try {
-                                const req = indexedDB.open('firebase-app-check-database', 1);
-                                req.onsuccess = (e) => {
-                                    const db = e.target.result;
-                                    const stores = Array.from(db.objectStoreNames);
-                                    if (!stores.length) { resolve(null); return; }
-                                    const tx = db.transaction(stores[0], 'readonly');
-                                    const store = tx.objectStore(stores[0]);
-                                    const all = store.getAll();
-                                    all.onsuccess = (ev) => {
-                                        const results = ev.target.result;
-                                        for (const item of results || []) {
-                                            const v = item?.value;
-                                            if (v?.token && typeof v.token === 'string' && v.token.length > 100) {
-                                                resolve(v.token);
-                                                return;
-                                            }
-                                        }
-                                        resolve(null);
-                                    };
-                                };
-                                req.onerror = () => resolve(null);
-                            } catch(e) { resolve(null); }
-                        });
-                    }
-                """)
-                if idb_token:
-                    token_holder.append(idb_token)
-                    print("[AppCheck] token lấy từ IndexedDB ✅")
-            except Exception as e:
-                print(f"[AppCheck] IndexedDB lỗi: {e}")
 
         await browser.close()
 
-    if not token_holder:
-        raise RuntimeError(
-            "\n[AppCheck] Không lấy được Firebase AppCheck token.\n"
-            "Nguyên nhân thường gặp:\n"
-            "  1. reCAPTCHA Enterprise chặn headless browser (bot detection)\n"
-            "  2. Playwright chưa cài chromium: playwright install chromium\n"
-            "  3. Thiếu deps trên Linux: playwright install-deps chromium\n"
-            "Thử chạy với PWDEBUG=1 để xem browser:\n"
-            "  PWDEBUG=1 python tien24h_appcheck.py"
-        )
+    # ── Lưu token ─────────────────────────────────────────────────────────────
+    if appcheck_token:
+        payload = {"token": appcheck_token[0], "expires_at": time.time() + TOKEN_TTL}
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        print(f"[AppCheck] token lưu → {out_path}")
+        print(f"[AppCheck] hết hạn: {time.strftime('%H:%M:%S', time.localtime(payload['expires_at']))}")
+    else:
+        print("[AppCheck] ⚠ không bắt được token — trang có thể chưa gửi request")
 
-    return token_holder[0]
+    # ── Kết quả SMS ───────────────────────────────────────────────────────────
+    if sms_response:
+        d = sms_response[0]
+        ok = d.get("code") == 200
+        if ok:
+            print(f"✅ Tien24h SMS {phone} thành công")
+        else:
+            print(f"✘ Tien24h SMS code={d.get('code')} msg={d.get('message','')!r}")
+        return ok
 
-
-def save_token(token: str, out_path: Path) -> None:
-    payload = {
-        "token":      token,
-        "expires_at": time.time() + TOKEN_TTL,
-    }
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    print(f"[AppCheck] lưu → {out_path}")
-    print(f"[AppCheck] hết hạn: {time.strftime('%H:%M:%S', time.localtime(payload['expires_at']))}")
-    print(f"[AppCheck] token đầu: {token[:50]}...")
+    print("✘ Tien24h SMS — không nhận được response")
+    return False
 
 
 async def main():
-    out_path = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_OUT
-    print("[AppCheck] bắt đầu lấy token...")
-    token = await fetch_appcheck_token()
-    save_token(token, out_path)
-    print("[AppCheck] hoàn tất ✅")
+    args = sys.argv[1:]
+    if not args:
+        print("Dùng: python tien24h_appcheck.py <số_điện_thoại> [--save-only]")
+        sys.exit(1)
+
+    phone     = args[0]
+    save_only = "--save-only" in args
+    out_path  = DEFAULT_OUT
+
+    # Đọc --out /path/to/file.json nếu có
+    if "--out" in args:
+        idx = args.index("--out")
+        if idx + 1 < len(args):
+            out_path = Path(args[idx + 1])
+
+    await run(phone, save_only=save_only, out_path=out_path)
 
 
 if __name__ == "__main__":

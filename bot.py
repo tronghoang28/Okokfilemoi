@@ -24,9 +24,14 @@ VN_TZ = pytz.timezone("Asia/Ho_Chi_Minh")
 MIN_NAME_LEN = 3           # min chars user must type to pass name check
 USES_PER_VERIFY = 1        # how many commands per verification (change to 2, 3... for more uses per click)
 DB_PATH = "./data/shopee_bot.db"
+THONGBAO_GROUP_ID = "-1001003743197744"  # nhóm nhận thông báo tự động
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+logging.basicConfig(level=logging.WARNING, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+# Tắt log verbose của các thư viện
+for _lib in ("aiogram", "aiohttp", "httpx", "httpcore", "asyncio"):
+    logging.getLogger(_lib).setLevel(logging.ERROR)
 
 # ─── DB SETUP ────────────────────────────────────────────────────────────────
 os.makedirs("./data", exist_ok=True)
@@ -71,6 +76,12 @@ def init_db():
         conn.commit()
 
 init_db()
+
+# Seed nhóm mặc định nếu chưa có
+with get_db() as _conn:
+    if not _conn.execute("SELECT 1 FROM settings WHERE key='thongbao_chat_id'").fetchone():
+        _conn.execute("INSERT INTO settings(key,value) VALUES('thongbao_chat_id',?)", (THONGBAO_GROUP_ID,))
+        _conn.commit()
 
 # ─── HELPERS ─────────────────────────────────────────────────────────────────
 def get_setting(key: str, default=None):

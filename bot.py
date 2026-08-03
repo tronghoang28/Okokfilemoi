@@ -63,12 +63,26 @@ def init_db():
             product_id INTEGER,
             sent_at    TEXT
         );
+        CREATE TABLE IF NOT EXISTS settings (
+            key   TEXT PRIMARY KEY,
+            value TEXT
+        );
         """)
         conn.commit()
 
 init_db()
 
 # ─── HELPERS ─────────────────────────────────────────────────────────────────
+def get_setting(key: str, default=None):
+    with get_db() as conn:
+        row = conn.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
+        return row["value"] if row else default
+
+def set_setting(key: str, value: str):
+    with get_db() as conn:
+        conn.execute("INSERT OR REPLACE INTO settings(key, value) VALUES(?,?)", (key, value))
+        conn.commit()
+
 def now_vn():
     return datetime.now(VN_TZ)
 
@@ -652,6 +666,81 @@ async def cmd_broadcast(msg: Message):
         reply_markup=btn
     )
 
+# ─── THÔNG BÁO TỰ ĐỘNG ───────────────────────────────────────────────────────
+@router.message(Command("thongbao"))
+async def cmd_thongbao(msg: Message):
+    if not is_admin(msg.from_user.id):
+        await msg.answer("❌ Bạn không có quyền admin.")
+        return
+
+    text = msg.text.partition(" ")[2].strip()
+
+    # Không có nội dung → hiển thị thông báo hiện tại
+    if not text:
+        current = get_setting("thongbao_text")
+        chat_id = get_setting("thongbao_chat_id")
+        if current:
+            group_info = f"\n🎯 Nhóm đích: <code>{chat_id}</code>" if chat_id else "\n⚠️ Chưa có nhóm đích (chạy lệnh trong nhóm để đặt)."
+            await msg.answer(
+                f"📢 <b>Thông báo hiện tại:</b>\n\n{current}{group_info}",
+                parse_mode=ParseMode.HTML
+            )
+        else:
+            await msg.answer(
+                "⚠️ Chưa có thông báo nào.\n\n"
+                "Dùng: <code>/thongbao &lt;nội dung&gt;</code>\n"
+                "Chạy lệnh này <b>trong nhóm</b> để tự động đặt nhóm đích.",
+                parse_mode=ParseMode.HTML
+            )
+        return
+
+    # Lưu nội dung thông báo
+    set_setting("thongbao_text", text)
+
+    # Nếu chạy trong nhóm → lưu luôn chat_id nhóm đó
+    if msg.chat.type in ("group", "supergroup"):
+        set_setting("thongbao_chat_id", str(msg.chat.id))
+        await msg.answer(
+            f"✅ Đã lưu thông báo!\n"
+            f"🔄 Bot sẽ tự gửi vào nhóm này mỗi <b>10 phút</b>.\n\n"
+            f"📢 Nội dung:\n{text}",
+            parse_mode=ParseMode.HTML
+        )
+    else:
+        chat_id = get_setting("thongbao_chat_id")
+        if chat_id:
+            await msg.answer(
+                f"✅ Đã cập nhật thông báo!\n"
+                f"🎯 Nhóm đích: <code>{chat_id}</code>\n\n"
+                f"📢 Nội dung:\n{text}",
+                parse_mode=ParseMode.HTML
+            )
+        else:
+            await msg.answer(
+                f"✅ Đã lưu thông báo!\n"
+                f"⚠️ Chưa có nhóm đích. Hãy chạy lệnh này <b>trong nhóm</b> để đặt nhóm.",
+                parse_mode=ParseMode.HTML
+            )
+
+
+async def thongbao_loop(bot: Bot):
+    """Gửi thông báo vào nhóm mỗi 10 phút."""
+    while True:
+        await asyncio.sleep(600)  # 10 phút
+        try:
+            text = get_setting("thongbao_text")
+            chat_id = get_setting("thongbao_chat_id")
+            if text and chat_id:
+                await bot.send_message(
+                    int(chat_id),
+                    f"📢 {text}",
+                    parse_mode=ParseMode.HTML
+                )
+                logger.info(f"[ThongBao] Đã gửi thông báo vào nhóm {chat_id}")
+        except Exception as e:
+            logger.warning(f"[ThongBao] Lỗi khi gửi: {e}")
+
+
 # ─── MAIN ────────────────────────────────────────────────────────────────────
 async def main():
     if not BOT_TOKEN:
@@ -666,6 +755,7 @@ async def main():
     dp.include_router(router)
 
     logger.info("Bot Shopee Affiliate đang chạy...")
+    asyncio.create_task(thongbao_loop(bot))
     await dp.start_polling(bot, skip_updates=True)
 
 if __name__ == "__main__":

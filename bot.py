@@ -324,7 +324,7 @@ async def cmd_call(msg: Message):
 
     try:
         proc = await asyncio.create_subprocess_exec(
-            sys.executable, "tenfile.py", phone,
+            sys.executable, "goiconcac.py", phone,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -390,7 +390,7 @@ async def cmd_sms(msg: Message):
 
     try:
         proc = await asyncio.create_subprocess_exec(
-            sys.executable, "tenfile.py", phone,
+            sys.executable, "goiconcac2.py", phone,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )

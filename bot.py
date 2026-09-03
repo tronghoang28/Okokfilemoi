@@ -68,6 +68,12 @@ def init_db():
             product_id INTEGER,
             sent_at    TEXT
         );
+        CREATE TABLE IF NOT EXISTS product_history (
+            user_id    INTEGER NOT NULL,
+            product_id INTEGER NOT NULL,
+            shown_at   TEXT DEFAULT (datetime('now')),
+            PRIMARY KEY (user_id, product_id)
+        );
         CREATE TABLE IF NOT EXISTS settings (
             key   TEXT PRIMARY KEY,
             value TEXT
@@ -157,6 +163,47 @@ def get_random_product():
         ).fetchone()
         return dict(row) if row else None
 
+def get_next_product(user_id: int):
+    """Return an active product not yet shown to this user in the current cycle."""
+    with get_db() as conn:
+        row = conn.execute(
+            """
+            SELECT p.*
+            FROM products p
+            WHERE p.active=1
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM product_history h
+                  WHERE h.user_id=? AND h.product_id=p.id
+              )
+            ORDER BY p.id DESC
+            LIMIT 1
+            """,
+            (user_id,)
+        ).fetchone()
+
+        # All current products were shown: start a new cycle.
+        if not row:
+            conn.execute(
+                "DELETE FROM product_history WHERE user_id=?", (user_id,)
+            )
+            row = conn.execute(
+                "SELECT * FROM products WHERE active=1 ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+
+        if not row:
+            return None
+
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO product_history(user_id, product_id, shown_at)
+            VALUES (?, ?, ?)
+            """,
+            (user_id, row["id"], datetime.utcnow().isoformat())
+        )
+        conn.commit()
+        return dict(row)
+
 def set_pending(user_id: int, product_id: int):
     with get_db() as conn:
         conn.execute("""
@@ -209,7 +256,7 @@ async def cmd_start(msg: Message):
         )
         return
 
-    product = get_random_product()
+    product = get_next_product(user.id)
     if not product:
         await msg.answer(
             "⚠️ Chưa có link sản phẩm nào. Admin vui lòng dùng /addlink để thêm.",
@@ -451,7 +498,7 @@ async def require_verify(msg: Message) -> bool:
     """Returns True if user is verified and has uses left. Sends prompt if not."""
     user_id = msg.from_user.id
     if not is_verified(user_id):
-        product = get_random_product()
+        product = get_next_product(user_id)
         if product:
             set_pending(user_id, product["id"])
             btn = InlineKeyboardMarkup(inline_keyboard=[[

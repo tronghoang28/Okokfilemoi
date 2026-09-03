@@ -10,7 +10,7 @@ import pytz
 
 from aiogram import Bot, Dispatcher, Router, F
 from aiogram.client.default import DefaultBotProperties
-from aiogram.enums import ParseMode
+from aiogram.enums import ChatType, ParseMode
 from aiogram.filters import Command, CommandStart
 from aiogram.types import (
     Message, CallbackQuery,
@@ -18,13 +18,13 @@ from aiogram.types import (
 )
 
 # ─── CONFIG ──────────────────────────────────────────────────────────────────
-BOT_TOKEN = os.getenv("SHOPEE_BOT_TOKEN", "7605235504:AAGzGnTP55IDsovFlCojatS9u0gLwvAKOQ8")
+BOT_TOKEN = os.getenv("SHOPEE_BOT_TOKEN", "7572901833:AAE6uSMLuHGP1OsFdbixMwhrdJe_RIuIPr8")
 ADMIN_IDS_STR = os.getenv("ADMIN_IDS", "5365031415")   # comma-separated Telegram user IDs
 VN_TZ = pytz.timezone("Asia/Ho_Chi_Minh")
 MIN_NAME_LEN = 3           # min chars user must type to pass name check
 USES_PER_VERIFY = 1        # how many commands per verification (change to 2, 3... for more uses per click)
 DB_PATH = "./data/shopee_bot.db"
-THONGBAO_GROUP_ID = "-1001003743197744"  # nhóm nhận thông báo tự động
+THONGBAO_GROUP_ID = "-1003743197744"  # nhóm nhận thông báo tự động
 
 logging.basicConfig(level=logging.WARNING, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -192,6 +192,8 @@ def fuzzy_match(user_input: str, product_name: str) -> bool:
 
 # ─── ROUTER ──────────────────────────────────────────────────────────────────
 router = Router()
+# Mọi lệnh chỉ được xử lý trong chat riêng; nhóm chỉ nhận tin tự động.
+router.message.filter(F.chat.type == ChatType.PRIVATE)
 
 # ─── /start ──────────────────────────────────────────────────────────────────
 @router.message(CommandStart())
@@ -699,39 +701,22 @@ async def cmd_thongbao(msg: Message):
         else:
             await msg.answer(
                 "⚠️ Chưa có thông báo nào.\n\n"
-                "Dùng: <code>/thongbao &lt;nội dung&gt;</code>\n"
-                "Chạy lệnh này <b>trong nhóm</b> để tự động đặt nhóm đích.",
+                "Dùng: <code>/thongbao &lt;nội dung&gt;</code> "
+                "để tạo thông báo gửi vào nhóm.",
                 parse_mode=ParseMode.HTML
             )
         return
 
     # Lưu nội dung thông báo
     set_setting("thongbao_text", text)
-
-    # Nếu chạy trong nhóm → lưu luôn chat_id nhóm đó
-    if msg.chat.type in ("group", "supergroup"):
-        set_setting("thongbao_chat_id", str(msg.chat.id))
-        await msg.answer(
-            f"✅ Đã lưu thông báo!\n"
-            f"🔄 Bot sẽ tự gửi vào nhóm này mỗi <b>10 phút</b>.\n\n"
-            f"📢 Nội dung:\n{text}",
-            parse_mode=ParseMode.HTML
-        )
-    else:
-        chat_id = get_setting("thongbao_chat_id")
-        if chat_id:
-            await msg.answer(
-                f"✅ Đã cập nhật thông báo!\n"
-                f"🎯 Nhóm đích: <code>{chat_id}</code>\n\n"
-                f"📢 Nội dung:\n{text}",
-                parse_mode=ParseMode.HTML
-            )
-        else:
-            await msg.answer(
-                f"✅ Đã lưu thông báo!\n"
-                f"⚠️ Chưa có nhóm đích. Hãy chạy lệnh này <b>trong nhóm</b> để đặt nhóm.",
-                parse_mode=ParseMode.HTML
-            )
+    chat_id = get_setting("thongbao_chat_id") or THONGBAO_GROUP_ID
+    await msg.answer(
+        f"✅ Đã cập nhật thông báo!\n"
+        f"🎯 Nhóm đích: <code>{chat_id}</code>\n"
+        f"🔄 Bot sẽ gửi mỗi <b>10 phút</b>.\n\n"
+        f"📢 Nội dung:\n{text}",
+        parse_mode=ParseMode.HTML
+    )
 
 
 async def thongbao_loop(bot: Bot):

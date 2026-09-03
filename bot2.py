@@ -76,6 +76,7 @@ ID_ADMIN_MAC_DINH = "5365031415"
 TEN_ADMIN_MAC_DINH = "Super Admin"
 NHOM_CHO_PHEP = [-1003743197744]
 AUTO_BOT_USERNAME = os.getenv("AUTO_BOT_USERNAME", "Thoatlamsaoduoc_bot")
+SHOPEE_BOT_USERNAME = os.getenv("SHOPEE_BOT_USERNAME", AUTO_BOT_USERNAME).lstrip("@")
 THU_MUC_DU_LIEU = "./data"
 os.makedirs(THU_MUC_DU_LIEU, exist_ok=True)
 logging.basicConfig(
@@ -792,6 +793,14 @@ def cooldown_decorator(func):
             command = command_mapping.get(command, command)
         else:
             command = func_name
+        # Trong nhóm chính, hai lệnh miễn phí chỉ hướng người dùng sang
+        # bot Shopee; không kiểm tra hoặc kích hoạt cooldown tại đây.
+        if (
+            command in ("free", "callfree")
+            and message.chat
+            and message.chat.id in NHOM_CHO_PHEP
+        ):
+            return await func(message, *args, **kwargs)
         is_cooldown, remaining = check_cooldown(user_id, command)
         if is_cooldown:
             time_str = dinh_dang_thoi_gian_cooldown(remaining)
@@ -1163,6 +1172,25 @@ async def xu_ly_ping(message: Message):
 async def xu_ly_callfree(message: Message):
     if not message.from_user:
         return False
+    if message.chat and message.chat.id in NHOM_CHO_PHEP:
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[[
+                InlineKeyboardButton(
+                    text="💬 Mở bot Shopee",
+                    url=f"https://t.me/{SHOPEE_BOT_USERNAME}",
+                )
+            ]]
+        )
+        await gui_phan_hoi(
+            message,
+            "📩 Hãy nhắn tin riêng với <b>bot Shopee</b> để sử dụng lệnh "
+            "<code>/callfree</code>.\n"
+            "Bot nhóm chính không thực hiện lệnh này trong nhóm.",
+            xoa_tin_nguoi_dung=True,
+            tu_dong_xoa_sau_giay=15,
+            reply_markup=keyboard,
+        )
+        return False
     user = message.from_user
     user_id = user.id
     cac_tham_so = trich_xuat_tham_so(message)
@@ -1294,6 +1322,25 @@ async def xu_ly_spam(message: Message):
 @chi_nhom
 async def xu_ly_free(message: Message):
     if not message.from_user:
+        return False
+    if message.chat and message.chat.id in NHOM_CHO_PHEP:
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[[
+                InlineKeyboardButton(
+                    text="💬 Mở bot Shopee",
+                    url=f"https://t.me/{SHOPEE_BOT_USERNAME}",
+                )
+            ]]
+        )
+        await gui_phan_hoi(
+            message,
+            "📩 Hãy nhắn tin riêng với <b>bot Shopee</b> để sử dụng lệnh "
+            "<code>/free</code>.\n"
+            "Bot nhóm chính không thực hiện lệnh này trong nhóm.",
+            xoa_tin_nguoi_dung=True,
+            tu_dong_xoa_sau_giay=15,
+            reply_markup=keyboard,
+        )
         return False
     user = message.from_user
     user_id = user.id

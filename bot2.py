@@ -791,9 +791,7 @@ async def gui_phan_hoi_chuyen_chat_rieng(message, command, mo_ta):
     noi_dung = (
         f"🪬 𝑪𝒉𝒂̀𝒐 𝑻𝒉𝒂̆̀𝒏𝒈 𝑴𝒂̣̆𝒕 𝑳𝒐̂̀𝒏 •.•\n"
         f"{lien_ket_nguoi_dung} 🪬\n\n"
-        """
-        f"𝐷𝑒̂̉ 𝑠𝑢̛̉ 𝑑𝑢̣𝑛𝑔 {command}, 𝑉𝑢𝑖 𝑙𝑜̀𝑛𝑔 𝑎̂́𝑛 𝑣𝑎̀𝑜 𝑝ℎ𝑖́𝑚 𝑏𝑒̂𝑛 𝑑𝑢̛𝑜̛́𝑖 𝑑𝑒̂̉ 𝑛ℎ𝑎̆́𝑛 𝑡𝑖𝑛 𝑟𝑖𝑒̂𝑛𝑔 𝑣𝑜̛́𝑖 𝐵𝑂𝑇 !
-        """
+        f"Để sử dụng {command}, vui lòng ấn vào phím bên dưới để nhắn tin riêng với BOT!\n"
         f"{mo_ta}"
     )
     return await gui_phan_hoi(
@@ -882,8 +880,8 @@ def chi_vip_vinh_vien(func):
             if la_super_vip_nguoi_dung:
                 await gui_phan_hoi(
                     message,
-                    "🏆 𝐵𝑎̣𝑛 𝑑𝑎𝑛𝑔 𝑙𝑎̀ 𝑆𝑈𝑃𝐸𝑅 𝑉𝐼𝑃 𝑛𝑒̂𝑛 𝑘ℎ𝑜̂𝑛𝑔 𝑡ℎ𝑒̂̉ 𝑑𝑢̀𝑛𝑔 𝑐𝑎́𝑐 𝑙𝑒̣̂𝑛ℎ 𝑉𝐼𝑃 𝑡ℎ𝑢̛𝑜̛̀𝑛𝑔.\n\n"
-                    "🚀 𝑉𝑢𝑖 𝑙𝑜̀𝑛𝑔 𝑑𝑢̀𝑛𝑔 𝑐𝑎́𝑐 𝑔𝑜́𝑖 𝑐𝑎𝑜 𝑐𝑎̂́𝑝 ℎ𝑜̛𝑛 !"
+                    "🏆 𝐵𝑎̣𝑛 𝑑𝑎𝑛𝑔 𝑙𝑎̀ 𝑆𝑈𝑃𝐸𝑅 𝑉𝐼𝑃 𝑛𝑒̂𝑛 𝑘ℎ𝑜̂𝑛𝑔 𝑡ℎ𝑒̂̉ 𝑑𝑢̀𝑛𝑔 𝑐𝑎́𝑐 𝑙𝑒̣̂𝑛ℎ 𝑉𝐼𝑃 𝑡ℎ𝑢̛𝑜̛̀𝑛𝑔.\n\n",
+                    "🚀 𝑉𝑢𝑖 𝑙𝑜̀𝑛𝑔 𝑑𝑢̀𝑛𝑔 𝑐𝑎́𝑐 𝑔𝑜́𝑖 𝑐𝑎𝑜 𝑐𝑎̂́𝑝 ℎ𝑜̛𝑛 !",
                     xoa_tin_nguoi_dung=True,
                     tu_dong_xoa_sau_giay=20,
                     co_keyboard=True,
@@ -1695,7 +1693,7 @@ async def xu_ly_full(message: Message):
             cac_so_hop_le.append(so)
 
     if not cac_so_hop_le:
-    await gui_phan_hoi(
+        await gui_phan_hoi(
             message,
             "🐸 𝑆𝑜̂́ 𝑑𝑖𝑒̣̂𝑛 𝑡ℎ𝑜𝑎̣𝑖 𝑘ℎ𝑜̂𝑛𝑔 ℎ𝑜̛̣𝑝 𝑙𝑒̣̂! 𝑉𝑢𝑖 𝑙𝑜̀𝑛𝑔 𝑛ℎ𝑎̣̂𝑝 𝑠𝑜̂́ 𝑉𝑖𝑒̣̂𝑡 𝑁𝑎𝑚 "
             "(𝟷𝟶-𝟷𝟷 𝑐ℎ𝑢̛̃ 𝑠𝑜̂́).",
@@ -1739,7 +1737,7 @@ async def xu_ly_full(message: Message):
         f"🕜 𝑇ℎ𝑜̛̀𝑖 𝑔𝑖𝑎𝑛          :         {chuoi_gio}\n\n"
         f"🚀 𝐿𝑒̣̂𝑛ℎ ✧𝑭𝑼𝑳𝑳 𝑨𝑻𝑻𝑨𝑪𝑲✧ {len(cac_so_hop_le)} 𝑠𝑜̂́ 𝑐𝑢̀𝑛𝑔 𝑙𝑢́𝑐 !\n"
     )
-        await gui_phan_hoi(
+    await gui_phan_hoi(
         message,
         noi_dung,
         xoa_tin_nguoi_dung=True,

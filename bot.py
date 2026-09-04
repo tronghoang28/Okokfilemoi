@@ -779,7 +779,7 @@ async def thongbao_loop(bot: Bot):
                     f"📢 {text}",
                     parse_mode=ParseMode.HTML
                 )
-                logger.info(f"[ThongBao] Đã gửi thông báo vào nhóm {chat_id}")
+                
         except Exception as e:
             logger.warning(f"[ThongBao] Lỗi khi gửi: {e}")
 

@@ -28,10 +28,8 @@ BASE_DIR = "/root/denvkl"
 REMOTE_VPS_URL = "http://103.218.123.203:5000"
 API_SECRET_KEY = os.getenv("API_SECRET_KEY", "bot_secret_key_12345")
 SCRIPT_LOCAL = {
-    "callfree": ["goivkl.py"],
     "call": ["tun13.py"],
     "spam": ["lenhsieuvip1.py", "lenhspam1.py"],
-    "free": ["test.py", "test1.py", "smscall_3.py", "lenhfree.py"],
     "callsuper": ["callfull.py"],
     "smscall": ["sm.py"],
 }
@@ -39,24 +37,23 @@ SCRIPT_REMOTE = {
     "vip": ["lonchau.py", "lonchau1.py"],
     "call": ["tun14.py"],
     "spam": ["07.py", "lenhlon.py", "lenhspam1.py", "lenhcall.py"],
-    "free": ["oki.py", "auto.py"],
     "callsuper": ["callfull2.py"],
+    "full": ["pro24h.py"],
 }
 TIMEOUT_MAP = {
     "vip": 300,
-    "callfree": 300,
     "spam": 300,
     "call": 300,
-    "free": 100,
     "auto": 600,
-    "tiktok": 3600,
+    "tiktok": 2700,
     "ngl": 3600,
     "callsuper": 600,
     "smscall": 600,
+    "full": 1200,
     "gmail": 600,
     "spamtele": 300,
 }
-DEFAULT_ROUNDS = {"spam": 2, "call": 1, "free": 2, "callfree": 2}
+DEFAULT_ROUNDS = {"spam": 2, "call": 1}
 ALL_SCRIPTS = set()
 for _d in (SCRIPT_LOCAL, SCRIPT_REMOTE):
     for _v in _d.values():
@@ -70,13 +67,13 @@ SCRIPT_TIMEOUT_MINUTES = {
     "tcp.py": 25,
     "callfull.py": 25,
     "callfull2.py": 25,
+    "pro24h.py": 60,
 }
 MA_TOKEN_BOT = os.getenv("BOT_TOKEN", "7945237130:AAFsKTv90VT2BU6jZ8WL-_Nx4vy9b0o92lo")
 ID_ADMIN_MAC_DINH = "5365031415"
 TEN_ADMIN_MAC_DINH = "Super Admin"
 NHOM_CHO_PHEP = [-1003743197744]
 AUTO_BOT_USERNAME = os.getenv("AUTO_BOT_USERNAME", "Thoatlamsaoduoc_bot")
-SHOPEE_BOT_USERNAME = os.getenv("SHOPEE_BOT_USERNAME", AUTO_BOT_USERNAME).lstrip("@")
 THU_MUC_DU_LIEU = "./data"
 os.makedirs(THU_MUC_DU_LIEU, exist_ok=True)
 logging.basicConfig(
@@ -134,41 +131,39 @@ COMMAND_COOLDOWNS = {
     "super_vip": {
         "callsuper": 1800,
         "smscall": 1800,
+        "full": 3000,
         "gmail": 1800,
-        "callfree": 90,
         "call": 300,
         "vip": 240,
         "spam": 300,
-        "free": 50,
         "img": 90,
         "vid": 90,
         "ngl": 90,
         "tiktok": 1000,
         "gmail": 200,
         "spamtele": 190,
+        "invite": 60,
         "default": 1200,
     },
     "vip": {
-        "callfree": 90,
         "call": 300,
-        "vip": 240,
+        "vip": 300,
         "spam": 300,
-        "free": 50,
         "img": 90,
         "vid": 90,
         "ngl": 90,
         "tiktok": 1000,
         "spamtele": 190,
+        "invite": 3000,
         "default": 1200,
     },
     "member": {
-        "callfree": 300,
         "spam": 1000,
-        "free": 120,
         "img": 90,
         "vid": 90,
         "ngl": 900,
         "spamtele": 90,
+        "invite": 3000,
         "default": 1200,
     },
 }
@@ -772,6 +767,44 @@ def tao_keyboard_lien_ket_nhom():
     )
 
     return keyboard
+
+
+def tao_keyboard_chat_rieng(start_command):
+    username = "@Ngayemdibxu_bot".lstrip("@")
+    url = f"https://t.me/{username}?start={start_command}"
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="💬 𝑀𝑜̛̉ 𝑐ℎ𝑎𝑡 !",
+                    url=url,
+                )
+            ]
+        ]
+    )
+
+
+async def gui_phan_hoi_chuyen_chat_rieng(message, command, mo_ta):
+    if not message.from_user:
+        return False
+    lien_ket_nguoi_dung = dinh_dang_lien_ket_nguoi_dung(message.from_user)
+    noi_dung = (
+        f"🪬 𝑪𝒉𝒂̀𝒐 𝑻𝒉𝒂̆̀𝒏𝒈 𝑴𝒂̣̆𝒕 𝑳𝒐̂̀𝒏 •.•\n"
+        f"{lien_ket_nguoi_dung} 🪬\n\n"
+        """
+        f"𝐷𝑒̂̉ 𝑠𝑢̛̉ 𝑑𝑢̣𝑛𝑔 {command}, 𝑉𝑢𝑖 𝑙𝑜̀𝑛𝑔 𝑎̂́𝑛 𝑣𝑎̀𝑜 𝑝ℎ𝑖́𝑚 𝑏𝑒̂𝑛 𝑑𝑢̛𝑜̛́𝑖 𝑑𝑒̂̉ 𝑛ℎ𝑎̆́𝑛 𝑡𝑖𝑛 𝑟𝑖𝑒̂𝑛𝑔 𝑣𝑜̛́𝑖 𝐵𝑂𝑇 !
+        """
+        f"{mo_ta}"
+    )
+    return await gui_phan_hoi(
+        message,
+        noi_dung,
+        xoa_tin_nguoi_dung=True,
+        tu_dong_xoa_sau_giay=15,
+        reply_markup=tao_keyboard_chat_rieng(command.lstrip("/")),
+    )
+
+
 def cooldown_decorator(func):
     @wraps(func)
     async def wrapper(message: Message, *args, **kwargs):
@@ -793,14 +826,6 @@ def cooldown_decorator(func):
             command = command_mapping.get(command, command)
         else:
             command = func_name
-        # Trong nhóm chính, hai lệnh miễn phí chỉ hướng người dùng sang
-        # bot Shopee; không kiểm tra hoặc kích hoạt cooldown tại đây.
-        if (
-            command in ("free", "callfree")
-            and message.chat
-            and message.chat.id in NHOM_CHO_PHEP
-        ):
-            return await func(message, *args, **kwargs)
         is_cooldown, remaining = check_cooldown(user_id, command)
         if is_cooldown:
             time_str = dinh_dang_thoi_gian_cooldown(remaining)
@@ -844,7 +869,26 @@ def chi_admin(func):
 def chi_vip_vinh_vien(func):
     @wraps(func)
     async def wrapper(message: Message, *args, **kwargs):
-        if not message.from_user or not la_vip_vinh_vien(message.from_user.id):
+        la_super_vip_nguoi_dung = bool(
+            message.from_user and la_super_vip(message.from_user.id)
+        )
+        if not message.from_user or not (
+            la_admin(message.from_user.id)
+            or (
+                la_vip_vinh_vien(message.from_user.id)
+                and not la_super_vip_nguoi_dung
+            )
+        ):
+            if la_super_vip_nguoi_dung:
+                await gui_phan_hoi(
+                    message,
+                    "🏆 𝐵𝑎̣𝑛 𝑑𝑎𝑛𝑔 𝑙𝑎̀ 𝑆𝑈𝑃𝐸𝑅 𝑉𝐼𝑃 𝑛𝑒̂𝑛 𝑘ℎ𝑜̂𝑛𝑔 𝑡ℎ𝑒̂̉ 𝑑𝑢̀𝑛𝑔 𝑐𝑎́𝑐 𝑙𝑒̣̂𝑛ℎ 𝑉𝐼𝑃 𝑡ℎ𝑢̛𝑜̛̀𝑛𝑔.\n\n"
+                    "🚀 𝑉𝑢𝑖 𝑙𝑜̀𝑛𝑔 𝑑𝑢̀𝑛𝑔 𝑐𝑎́𝑐 𝑔𝑜́𝑖 𝑐𝑎𝑜 𝑐𝑎̂́𝑝 ℎ𝑜̛𝑛 !"
+                    xoa_tin_nguoi_dung=True,
+                    tu_dong_xoa_sau_giay=20,
+                    co_keyboard=True,
+                )
+                return False
             await gui_phan_hoi(
                 message,
                 f"🐸 𝐿𝑒̣̂𝑛ℎ 𝑛𝑎̀𝑦 𝑐ℎ𝑖̉ 𝑑𝑎̀𝑛ℎ 𝑐ℎ𝑜 𝑉𝐼𝑃 !\n\n"
@@ -1128,6 +1172,7 @@ async def xu_ly_sta(message: Message):
  • /auto       -       𝐴𝑢𝑡𝑜 𝑐ℎ𝑎̣𝑦 𝑑𝑒̂𝑚 𝟸𝟺/𝟽
  • /callsuper  -     𝑆𝑖𝑒̂𝑢 𝑐𝑎𝑙𝑙 𝟷𝟶 𝑠𝑜̂́ 𝑐𝑢̀𝑛𝑔 𝑙𝑢́𝑐
  • /smscall     -      𝑆𝑀𝑆 + 𝐶𝑎𝑙𝑙 10 𝑠𝑜̂́
+ • /full        -      𝑀𝑎𝑥 𝟷𝟶𝟶 𝑆𝑜̂́
  • /gmail       -      𝑋𝑢̛̉ 𝑙𝑦́ 𝑒𝑚𝑎𝑖𝑙 𝑉𝐼𝑃
 
 """
@@ -1167,97 +1212,16 @@ async def xu_ly_ping(message: Message):
         photo_path=photo_path,
     )
     return True
-@cooldown_decorator
+
 @chi_nhom
 async def xu_ly_callfree(message: Message):
     if not message.from_user:
         return False
-    if message.chat and message.chat.id in NHOM_CHO_PHEP:
-        keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[[
-                InlineKeyboardButton(
-                    text="💬 Mở bot Shopee",
-                    url=f"https://t.me/{SHOPEE_BOT_USERNAME}",
-                )
-            ]]
-        )
-        await gui_phan_hoi(
-            message,
-            "📩 Hãy nhắn tin riêng với <b>bot Shopee</b> để sử dụng lệnh "
-            "<code>/callfree</code>.\n"
-            "Bot nhóm chính không thực hiện lệnh này trong nhóm.",
-            xoa_tin_nguoi_dung=True,
-            tu_dong_xoa_sau_giay=15,
-            reply_markup=keyboard,
-        )
-        return False
-    user = message.from_user
-    user_id = user.id
-    cac_tham_so = trich_xuat_tham_so(message)
-    if not cac_tham_so:
-        await gui_phan_hoi(
-            message,
-            "🐸 /callfree SĐT1 SĐT2 SĐT3 — Tối đa 3 số điện thoại mỗi lần, vừa gọi vừa spam siêu khoẻ!",
-            xoa_tin_nguoi_dung=True,
-            tu_dong_xoa_sau_giay=10,
-        )
-        return False
-    cac_so_hop_le = []
-    for so in cac_tham_so:
-        so = so.strip()
-        if la_so_dien_thoai_hop_le(so):
-            cac_so_hop_le.append(so)
-    if not cac_so_hop_le:
-        await gui_phan_hoi(
-            message,
-            "🐸 Số điện thoại không hợp lệ! Vui lòng nhập số Việt Nam (10-11 chữ số).",
-            xoa_tin_nguoi_dung=True,
-            tu_dong_xoa_sau_giay=10,
-        )
-        return False
-    if len(cac_so_hop_le) > 3:
-        await gui_phan_hoi(
-            message,
-            "🐸 𝑇𝑜̂́𝑖 đ𝑎 𝑐ℎ𝑖̉ đ𝑢̛𝑜̛̣𝑐 3 𝑠𝑜̂́ đ𝑖𝑒̣̂𝑛 𝑡ℎ𝑜𝑎̣𝑖 !⚠️",
-            xoa_tin_nguoi_dung=True,
-            tu_dong_xoa_sau_giay=10,
-        )
-        return False
-    script_name = "goivkl.py"
-    script_path = os.path.join(BASE_DIR, script_name)
-    phone_str = " ".join(shlex.quote(p) for p in cac_so_hop_le)
-    cmd = f"python3 {shlex.quote(script_path)} {phone_str}"
-    success, pid = chay_script_don_gian(cmd, user_id, command_type="callfree")
-    if not success:
-        await gui_phan_hoi(
-            message,
-            "𝐾ℎ𝑜̂𝑛𝑔 𝑡ℎ𝑒̂̉ 𝑘ℎ𝑜̛̉𝑖 đ𝑜̣̂𝑛𝑔 𝑙𝑒̣̂𝑛ℎ! 𝑉𝑢𝑖 𝑙𝑜̀𝑛𝑔 𝑡ℎ𝑢̛̉ 𝑙𝑎̣𝑖 𝑠𝑎𝑢.",
-            xoa_tin_nguoi_dung=True,
-            tu_dong_xoa_sau_giay=10,
-        )
-        return False
-    tieu_de = lay_tieu_de_quyen(user_id)
-    lien_ket_nguoi_dung = dinh_dang_lien_ket_nguoi_dung(user, an_danh=lay_cap_do_quyen_ngu_dung(user_id) == "super_vip")
-    chuoi_gio, chuoi_ngay = lay_thoi_gian_vn()
-    noi_dung = (
-        f"{tieu_de}        :         {lien_ket_nguoi_dung}\n"
-        f"🆔 𝑀ã 𝐼𝐷              :       {user_id}\n"
-        f"📲 𝑃ℎ𝑜𝑛𝑒 𝑉𝑁        :         {len(cac_so_hop_le)} 𝑆𝑜̂́ \n"
-        f"⚡ 𝑇𝑖𝑒̂́𝑛 𝑡𝑟𝑖̀𝑛ℎ        :       Đ𝑜̛𝑛 𝑙𝑒̉ (1 𝑡𝑖𝑒̂́𝑛 𝑡𝑟𝑖̀𝑛ℎ)\n"
-        f"🪩 𝑉𝑖̣ 𝑡𝑟𝑖́                :        𝑉/𝑁 𝑂𝑛𝑙𝑖𝑛𝑒\n\n"
-        f"🚀 𝐿𝑒̣̂𝑛ℎ ✧𝐶𝑎𝑙𝑙.𝐹𝑟𝑒𝑒✧ 𝑑𝑎̃ 𝑐ℎ𝑎̣𝑦 𝑡ℎ𝑎̀𝑛ℎ 𝑐𝑜̂𝑛𝑔 \n"
-        f"  𝑳𝒆̣̂𝒏𝒉 𝒔𝒊𝒆̂𝒖 𝒏𝒈𝒐𝒏 𝒍𝒖𝒐̂𝒏 𝒅𝒂̂́𝒚 𝑨𝑬! 🎯 \n"
-    )
-    photo_path = "ANH1.MP4"
-    await gui_phan_hoi(
+    return await gui_phan_hoi_chuyen_chat_rieng(
         message,
-        noi_dung,
-        xoa_tin_nguoi_dung=True,
-        luu_vinh_vien=True,
-        co_keyboard=True,
-        photo_path=photo_path,
+        "/callfree",
+        "Lệnh này được tiếp tục xử lý trong chat riêng với BOT.",
     )
-    return True
 @cooldown_decorator
 @chi_nhom
 @chi_vip_vinh_vien
@@ -1318,98 +1282,15 @@ async def xu_ly_spam(message: Message):
         photo_path=photo_path,
     )
     return True
-@cooldown_decorator
 @chi_nhom
 async def xu_ly_free(message: Message):
     if not message.from_user:
         return False
-    if message.chat and message.chat.id in NHOM_CHO_PHEP:
-        keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[[
-                InlineKeyboardButton(
-                    text="💬 Mở bot Shopee",
-                    url=f"https://t.me/{SHOPEE_BOT_USERNAME}",
-                )
-            ]]
-        )
-        await gui_phan_hoi(
-            message,
-            "📩 Hãy nhắn tin riêng với <b>bot Shopee</b> để sử dụng lệnh "
-            "<code>/free</code>.\n"
-            "Bot nhóm chính không thực hiện lệnh này trong nhóm.",
-            xoa_tin_nguoi_dung=True,
-            tu_dong_xoa_sau_giay=15,
-            reply_markup=keyboard,
-        )
-        return False
-    user = message.from_user
-    user_id = user.id
-    cac_tham_so = trich_xuat_tham_so(message)
-    if not cac_tham_so:
-        await gui_phan_hoi(
-            message,
-            "🐸 /free 𝟶𝟿𝟶𝟿𝟷𝟸𝟹𝟺𝟻 - 𝐶ℎ𝑖̉ 𝟷 𝑠𝑜̂́ 𝑑𝑖𝑒̣̂𝑛 𝑡ℎ𝑜𝑎̣𝑖 !",
-            xoa_tin_nguoi_dung=True,
-            tu_dong_xoa_sau_giay=10,
-        )
-        return False
-    if len(cac_tham_so) > 1:
-        await gui_phan_hoi(
-            message,
-            "🐸 Lệnh /free chỉ nhận 1 số điện thoại!",
-            xoa_tin_nguoi_dung=True,
-            tu_dong_xoa_sau_giay=10,
-        )
-        return False
-    cac_so_hop_le = []
-    for so in cac_tham_so:
-        so = so.strip()
-        if la_so_dien_thoai_hop_le(so):
-            cac_so_hop_le.append(so)
-    if not cac_so_hop_le:
-        await gui_phan_hoi(
-            message,
-            "🐸 Các số điện thoại không hợp lệ!",
-            xoa_tin_nguoi_dung=True,
-            tu_dong_xoa_sau_giay=10,
-        )
-        return False
-    so_dien_thoai = cac_so_hop_le[0]
-    thanh_cong, result = await execute_with_swap(
-        "free", [so_dien_thoai], user_id, rounds=2
-    )
-    if not thanh_cong:
-        await gui_phan_hoi(
-            message,
-            "🐸 𝑇𝑜̂́𝑖 𝑑𝑎 𝟷𝟶 𝑡𝑖𝑒̂́𝑛 𝑡𝑟𝑖̀𝑛ℎ 𝑚𝑜̂̃𝑖, 𝑐𝑜́ 𝑡ℎ𝑒̂̉ ℎ𝑒̂́𝑡 𝑡ℎ𝑜̛̀𝑖 𝑔𝑖𝑎𝑛 𝑐𝑜𝑜𝑙𝑑𝑜𝑤𝑛 𝑛ℎ𝑢̛𝑛𝑔 𝑐𝑎́𝑐 𝑠𝑜̂́ 𝑐𝑢̉𝑎 𝑏𝑎̣𝑛 𝑣𝑎̂̃𝑛 𝑑𝑎𝑛𝑔 𝑐ℎ𝑎̣𝑦 𝑡𝑟𝑒̂𝑛 𝑠𝑒𝑟𝑣𝑒𝑟 !",
-            xoa_tin_nguoi_dung=True,
-            tu_dong_xoa_sau_giay=10,
-        )
-        return False
-    _an_danh = lay_cap_do_quyen_ngu_dung(user_id) == "super_vip"
-    tieu_de = lay_tieu_de_quyen(user_id)
-    lien_ket_nguoi_dung = dinh_dang_lien_ket_nguoi_dung(user, an_danh=_an_danh)
-    so_hien_thi = che_so_dien_thoai(so_dien_thoai) if _an_danh else so_dien_thoai
-    noi_dung = (
-        f"{tieu_de}        :        {lien_ket_nguoi_dung}\n"
-        f"🆔 𝑀ã 𝐼𝐷              :       {user_id}\n"
-        f"📲 𝑃ℎ𝑜𝑛𝑒 𝑉𝑁        :        {so_hien_thi}\n"
-        f"🛰️ 𝑁ℎ𝑎̀ 𝑚𝑎̣𝑛𝑔       :        {get_carrier(so_dien_thoai)}\n"
-        f"🪩 𝑉𝑖̣ 𝑡𝑟𝑖́                :        𝑉/𝑁 𝑂𝑛𝑙𝑖𝑛𝑒\n\n"
-        f"🚀 𝐿𝑒̣̂𝑛ℎ ✧𝐅𝐫𝐞𝐞✧ 𝑑𝑎̃ 𝑐ℎ𝑎̣𝑦 𝑡ℎ𝑎̀𝑛ℎ 𝑐𝑜̂𝑛𝑔 \n"
-        f" 𝐺𝑖𝑎̉𝑚 𝑡ℎ𝑜̛̀𝑖 𝑔𝑖𝑎𝑛 𝑥𝑢𝑜̂́𝑛𝑔 𝑐𝑜̀𝑛 𝟻𝟹𝑠 !🎯\n"
-    )
-    photo_path = "ANH1.MP4"
-    await gui_phan_hoi(
+    return await gui_phan_hoi_chuyen_chat_rieng(
         message,
-        noi_dung,
-        xoa_tin_nguoi_dung=True,
-        luu_vinh_vien=True,
-        co_keyboard=True,
-        photo_path=photo_path,
+        "/free",
+        "Lệnh này được tiếp tục xử lý trong chat riêng với BOT.",
     )
-    return True
-
 @chi_nhom
 @cooldown_decorator
 async def xu_ly_callsuper(message: Message):
@@ -1776,6 +1657,95 @@ async def xu_ly_smscall(message: Message):
         luu_vinh_vien=True,
         co_keyboard=True,
         photo_path=photo_path,
+    )
+    return True
+
+
+@cooldown_decorator
+@chi_nhom
+@chi_super_vip
+async def xu_ly_full(message: Message):
+    if not message.from_user:
+        return False
+
+    user = message.from_user
+    user_id = user.id
+    user_role = lay_cap_do_quyen_ngu_dung(user_id)
+    lien_ket = dinh_dang_lien_ket_nguoi_dung(
+        user, an_danh=user_role == "super_vip"
+    )
+    tieu_de = lay_tieu_de_quyen(user_id)
+    lien_ket_nguoi_dung = lien_ket
+    cac_tham_so = trich_xuat_tham_so(message)
+
+    if not cac_tham_so:
+        await gui_phan_hoi(
+            message,
+            f"🫡 {lien_ket}\n\n"
+            "📝 𝐶𝑢́ 𝑝ℎ𝑎́𝑝: /full 𝟶𝟿𝟶𝟷𝟸𝟹𝟺𝟻𝟼𝟽 𝟶𝟿𝟶𝟿𝟾𝟽𝟼𝟻𝟺𝟹.....𝑙𝑒̣̂𝑛ℎ 𝑛𝑎̀𝑦 𝑛ℎ𝑎̣̂𝑛 𝑡𝑜̂́𝑖 𝑑𝑎 𝟷𝟶𝟶 𝑠𝑜̂́ 𝑚𝑜̂̃𝑖 𝑙𝑎̂̀𝑛 𝑐ℎ𝑎̣𝑦 !",
+            xoa_tin_nguoi_dung=True,
+            tu_dong_xoa_sau_giay=15,
+        )
+        return False
+
+    cac_so_hop_le = []
+    for so in cac_tham_so:
+        so = so.strip()
+        if la_so_dien_thoai_hop_le(so):
+            cac_so_hop_le.append(so)
+
+    if not cac_so_hop_le:
+    await gui_phan_hoi(
+            message,
+            "🐸 𝑆𝑜̂́ 𝑑𝑖𝑒̣̂𝑛 𝑡ℎ𝑜𝑎̣𝑖 𝑘ℎ𝑜̂𝑛𝑔 ℎ𝑜̛̣𝑝 𝑙𝑒̣̂! 𝑉𝑢𝑖 𝑙𝑜̀𝑛𝑔 𝑛ℎ𝑎̣̂𝑝 𝑠𝑜̂́ 𝑉𝑖𝑒̣̂𝑡 𝑁𝑎𝑚 "
+            "(𝟷𝟶-𝟷𝟷 𝑐ℎ𝑢̛̃ 𝑠𝑜̂́).",
+            xoa_tin_nguoi_dung=True,
+            tu_dong_xoa_sau_giay=10,
+        )
+        return False
+
+    if len(cac_so_hop_le) > 100:
+        await gui_phan_hoi(
+            message,
+            "🐸 𝐿𝑒̣̂𝑛ℎ /full 𝑐ℎ𝑖̉ 𝑐ℎ𝑜 𝑝ℎ𝑒́𝑝 𝑡𝑜̂́𝑖 𝑑𝑎 𝟷𝟶𝟶 𝑠𝑜̂́ 𝑚𝑜̂̃𝑖 𝑙𝑎̂̀𝑛!",
+            xoa_tin_nguoi_dung=True,
+            tu_dong_xoa_sau_giay=10,
+        )
+        return False
+
+    thanh_cong, result = await execute_with_swap(
+        "full", cac_so_hop_le, user_id
+    )
+    if not thanh_cong:
+        error_msg = result.get("error", "") if isinstance(result, dict) else ""
+        await gui_phan_hoi(
+            message,
+            f"🐸 Không thể khởi động Full trên VPS!\n{escape_html(error_msg)}",
+            xoa_tin_nguoi_dung=True,
+            tu_dong_xoa_sau_giay=10,
+        )
+        return False
+
+    chuoi_gio, chuoi_ngay = lay_thoi_gian_vn()
+    so_hien_thi = " | ".join(
+        che_so_dien_thoai(so) if user_role == "super_vip" else so
+        for so in cac_so_hop_le
+    )
+    noi_dung = (
+
+        f"{tieu_de}        :        {lien_ket_nguoi_dung}\n"
+        f"🆔 𝑀ã 𝐼𝐷               :       {user_id}\n"
+        f"📲 𝑃ℎ𝑜𝑛𝑒 𝑉𝑁         :        {len(cac_so_hop_le)} 𝑠𝑜̂́\n\n"
+        f"🕜 𝑇ℎ𝑜̛̀𝑖 𝑔𝑖𝑎𝑛          :         {chuoi_gio}\n\n"
+        f"🚀 𝐿𝑒̣̂𝑛ℎ ✧𝑭𝑼𝑳𝑳 𝑨𝑻𝑻𝑨𝑪𝑲✧ {len(cac_so_hop_le)} 𝑠𝑜̂́ 𝑐𝑢̀𝑛𝑔 𝑙𝑢́𝑐 !\n"
+    )
+        await gui_phan_hoi(
+        message,
+        noi_dung,
+        xoa_tin_nguoi_dung=True,
+        luu_vinh_vien=True,
+        co_keyboard=True,
+        photo_path="ANH1.MP4",
     )
     return True
 
@@ -2661,6 +2631,7 @@ async def xu_ly_tin_nhan_khong_phai_lenh(message: Message):
                 "/call",
                 "/callsuper",
                 "/smscall",
+                "/full",
                 "/callfree",
                 "/spam",
                 "/ping",
@@ -2753,6 +2724,20 @@ async def xu_ly_start_rieng(message: Message):
         return False
     if message.chat.type != "private":
         return False
+    payloads = trich_xuat_tham_so(message)
+    payload = payloads[0].lower() if payloads else ""
+    if payload in {"callfree", "free"}:
+        await bot.send_message(
+            chat_id=message.chat.id,
+            text=(
+                f"<blockquote>🤖 𝐶ℎ𝑎̀𝑜 {escape_html(message.from_user.full_name or 'bạn')} !\n\n"
+                f"✅ 𝐵𝑎̣𝑛 đ𝑎̃ 𝑚𝑜̛̉ 𝑐ℎ𝑎𝑡 𝑟𝑖𝑒̂𝑛𝑔 𝑣𝑜̛́𝑖 𝐵𝑂𝑇.\n"
+                f"📌 𝐿𝑒̣̂𝑛ℎ đ𝑢̛𝑜̛̣𝑐 𝑐ℎ𝑜̣𝑛 : /{payload}\n\n"
+                f"💡 𝑉𝑢𝑖 𝑙𝑜̀𝑛𝑔 𝑔𝑢̛̉𝑖 𝑙𝑎̣𝑖 𝑙𝑒̣̂𝑛ℎ trong chat riêng để tiếp tục.</blockquote>"
+            ),
+            parse_mode=ParseMode.HTML,
+        )
+        return True
     await bot.send_message(
         chat_id=message.chat.id,
         text=f"<blockquote>🤖 𝐶ℎ𝑎̀𝑜 𝑏𝑎̣𝑛 !\n\n"
@@ -2922,6 +2907,7 @@ def dinh_dang_tien_do_invite(so_lan: int) -> str:
 
 
 @chi_nhom
+@cooldown_decorator
 async def xu_ly_invite(message: Message):
     """Lệnh /invite — tạo hoặc hiển thị link mời cá nhân."""
     if not message.from_user:
@@ -2988,6 +2974,7 @@ async def xu_ly_invite(message: Message):
         xoa_tin_nguoi_dung=True, luu_vinh_vien=True,
         reply_markup=keyboard,
     )
+    return True
 
 
 @chi_nhom
@@ -3201,6 +3188,7 @@ def create_router():
     router.message.register(xu_ly_call, Command("call"))
     router.message.register(xu_ly_callsuper, Command("callsuper"))
     router.message.register(xu_ly_smscall, Command("smscall"))
+    router.message.register(xu_ly_full, Command("full"))
     router.message.register(xu_ly_gmail, Command("gmail"))
     router.message.register(xu_ly_tiktok, Command("tiktok"))
     router.message.register(xu_ly_ngl, Command("ngl"))
@@ -3267,6 +3255,10 @@ async def main():
         raise
     finally:
         cleanup_dead_processes()
+        try:
+            await bot.session.close()
+        except Exception as e:
+            logger.warning(f"Không thể đóng phiên HTTP của bot: {e}")
 
 if __name__ == "__main__":
     try:

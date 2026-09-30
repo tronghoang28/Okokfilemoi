@@ -610,15 +610,12 @@ async def cmd_thongke(msg: Message):
         f"👥 Tổng user đã xác nhận: <b>{total_all_time}</b>",
         parse_mode=ParseMode.HTML
     )
-
-# ─── ADMIN: /layflashsale ────────────────────────────────────────────────────
 SHOPEE_HEADERS = {
     "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/537.36",
     "referer": "https://shopee.vn/",
 }
 
 async def fetch_flash_sale_items(limit: int = 15) -> list:
-    """Fetch current flash sale items from Shopee public API."""
     import re
     try:
         async with aiohttp.ClientSession() as session:

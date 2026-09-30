@@ -1,8 +1,9 @@
-import os
 import re
+import os
 import requests
 import time
 import uuid
+import random
 import base64
 import hashlib
 import json
@@ -15,19 +16,9 @@ from Crypto.Util.Padding import pad, unpad
 from PIL import ImageFile, Image, ImageEnhance
 import ddddocr
 
-# Pillow's type stubs expose this flag as Literal[False], although it is
-# intentionally mutable at runtime for handling truncated image responses.
-setattr(ImageFile, "LOAD_TRUNCATED_IMAGES", True)
+ImageFile.LOAD_TRUNCATED_IMAGES = True
 _ocr = ddddocr.DdddOcr(show_ad=False)
 
-import base64
-import json
-import random
-import requests
-
-from urllib.parse import urlparse
-from Crypto.Cipher import AES, PKCS1_v1_5 as RSA_PKCS1
-from Crypto.PublicKey import RSA
 
 
 _BANANA_RSA_PUB = RSA.import_key(
@@ -103,12 +94,19 @@ def _banana_send(
     event_url = f"{origin}/app-domain/api/burying/unauthenticated/event"
 
     proxies = None
-    proxy_url = os.getenv("FV_BANANA_PROXY")
-    if use_proxy and proxy_url:
-        proxies = {"http": proxy_url, "https": proxy_url}
+
+    # Nếu project của bạn có proxy riêng thì gán proxies ở đây.
+    # use_proxy=False => requests đi thẳng.
+    if not use_proxy:
+        proxies = {
+            "http": None,
+            "https": None,
+        }
 
     try:
         with requests.Session() as session:
+            session.verify = True
+
             # Request event
             try:
                 k1 = _banana_rnd_key()
@@ -152,32 +150,23 @@ def _banana_send(
                 proxies=proxies,
             )
 
-        print(
-            f"[{label}] HTTP {r.status_code}; "
-            f"content-type={r.headers.get('Content-Type', '')}; "
-            f"bytes={len(r.content)}"
-        )
         try:
-            outer = r.json()
-            encrypted = outer.get("key") if isinstance(outer, dict) else None
-            if not isinstance(encrypted, str) or not encrypted:
-                print(f"[{label}] Response không có trường key: {r.text[:300]}")
-                return False
+            data = r.json()["key"]
 
-            decrypted = AES.new(k2.encode(), AES.MODE_ECB).decrypt(
-                base64.b64decode(encrypted, validate=True)
-            )
-            decoded = json.loads(unpad(decrypted, AES.block_size).decode("utf-8"))
-            print(f"[{label}] Decrypted response: {decoded}")
+            dec = AES.new(
+                k2.encode(),
+                AES.MODE_ECB,
+            ).decrypt(base64.b64decode(data))
+
+            dec = json.loads(dec[: -dec[-1]])
 
             ok = bool(
-                decoded.get("ok")
-                or decoded.get("success")
-                or str(decoded.get("code", "")) in ("0", "1", "200")
+                dec.get("ok")
+                or str(dec.get("code", "")) in ("0", "1", "200")
             )
-        except (KeyError, TypeError, ValueError, UnicodeDecodeError) as exc:
-            print(f"[{label}] Không giải mã được response: {type(exc).__name__}: {exc}")
-            return False
+
+        except Exception:
+            ok = r.status_code == 200
 
         return ok
 
@@ -185,18 +174,15 @@ def _banana_send(
         print(f"[{label}] ERR {type(e).__name__}: {e}")
         return False
 
-
 def sent(phone):
-    phone = re.sub(r"\D", "", str(phone))
-    if not re.fullmatch(r"0\d{9}", phone):
-        print(f"[FVbanana] Số điện thoại không hợp lệ: {phone!r}")
-        return False
     return _banana_send(
         phone,
         "https://www.fvbanana.top/app-domain/api/user/sentSms",
         "Fast_Vay",
         "Thành Công",
-    )        
+    ) 
+
+
 
 def mfast_1(phone):
     url = "https://appay.cloudcms.vn/mfast/potential_customer/ajax_confirm_phone"
@@ -833,12 +819,10 @@ def tientay24(phone: str):
         "Referer": "https://h5app.tientay24.com/",
         "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1",
     }
-
     payload = {
         "mobileNo": phone,
         "smsType": 2,
     }
-
     try:
         r = requests.post(
             url,

@@ -1,0 +1,46 @@
+## Sniffed Detail - https://api.thitruongsi.com/v1/user/api/v4/users/register/step1-phone 
+
+### Request:
+
+POST /v1/user/api/v4/users/register/step1-phone HTTP/1.1
+Host: api.thitruongsi.com
+Accept: application/json, text/plain, */*
+Content-Type: application/json
+Sec-Fetch-Site: same-site
+Origin: https://accounts.thitruongsi.com
+Sec-Fetch-Mode: cors
+User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1
+Referer: https://accounts.thitruongsi.com/
+Sec-Fetch-Dest: empty
+Content-Length: 922
+Accept-Language: vi-VN,vi;q=0.9
+Priority: u=3, i
+Accept-Encoding: gzip, deflate, br
+Connection: keep-alive
+
+{"account_phone":"0971483209","recaptcha_token":"1.KS-6oaJhfsc0GdcsCrXGhxC9PaEftxnlsm7DsW0gDbTdGlnTT8B9nqyAI7SQs71SlwMUWEKyeBfl2ZohltqIAYThz5Od5H-6tLWLKhV06Schmq-JAnRp0EMkg-6Omxf7KSezUb_v0pvPNo1ZXaD8ZFTjiU9E-s7m73yJfRnPWvGMxCRjJ4jHRpz0gQuizHbWYl32nfdnW6Q3lI3-Ldyn-4lGgqNXeQJKtwHsh4NfktlctxTMRxfLP4D0kLujP_a56sMFfLFkxiUna3t-6mGflEDCTdgHFjPb0GCL6vhBq-ZUeCrb80aZ0RpNLWJf6By__E3W9EUslBe5UgbWUvFSfUmm_YAXBNKulG6YICvCASLEr-2bs5yPa1I9RKEztPe52M24EnfJN8GGUB8qL3y0llhWdLcZ5aHW7hiqBwu_KIdWLO-BPKNluMSjngf4lBUNu7QrHXtNWkhh0EFYB54CyY6QjJGu55O1uFJnryLuvG-6pIPukFZxdtU9dQHevjR7npLZT__bb5c3mPAYpwoauj4NC_Ypg_V1paWidXbIswYFmXsTrWp3Lb2S8t7zZov_S0kd1YLYQbq1zGSVhGPqZw2FgzCfG1QV13pF1PrUGGJz-uGEbDma4WwfCTH0lVHIB0MlL0nX_akr5ZqtV7opH-rA520Kx29N9KTkTQv3bPz_Wsv5zznRiB1EkTQGZFmV.ABoqxpsxsTe1a2s8PvOLCA.66937fc0d6e1643b1b073c8b0a5b2471a714ac00f9a26ce037dc3ed1e1209c09","recaptcha_verify_only":true,"skip_check_exists":false,"captcha":"turnstile"}
+
+### Response:
+
+HTTP/1.1 201 Created
+Server: nginx
+Date: Wed, 30 Sep 2026 04:43:36 GMT
+Content-Type: application/json
+Content-Length: 29
+Connection: keep-alive
+access-control-allow-origin: https://accounts.thitruongsi.com
+access-control-expose-headers: x-total-count,is-admin,content-range
+cache-control: no-cache, private
+x-ratelimit-limit: 30
+x-ratelimit-remaining: 29
+x-envoy-upstream-service-time: 210
+Vary: Origin
+Access-Control-Allow-Credentials: true
+X-Kong-Upstream-Latency: 212
+X-Kong-Proxy-Latency: 0
+Via: kong/1.2.1
+
+{"data":[],"status_code":201}
+
+====
+Sniffed By Stream, Only Spread For Research Purpose.

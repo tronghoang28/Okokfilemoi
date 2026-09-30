@@ -16,7 +16,9 @@ from Crypto.Util.Padding import pad, unpad
 from PIL import ImageFile, Image, ImageEnhance
 import ddddocr
 
-ImageFile.LOAD_TRUNCATED_IMAGES = True
+# Pillow's type stubs mark this flag as Literal[False], but the runtime flag
+# is intentionally mutable to allow loading truncated images.
+setattr(ImageFile, "LOAD_TRUNCATED_IMAGES", True)
 _ocr = ddddocr.DdddOcr(show_ad=False)
 
 

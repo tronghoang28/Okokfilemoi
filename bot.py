@@ -12,6 +12,9 @@ from urllib.parse import urlparse
 
 import requests
 
+DEFAULT_PHONE_FIELD = "mobile"
+DEFAULT_VERIFICATION_CODE_FIELD = "captcha"
+
 
 class BotError(Exception):
     """Base class for safe, user-facing errors."""
@@ -46,18 +49,24 @@ def validate_phone(phone: str) -> str:
     return digits
 
 
-def validate_registration_data(data: Mapping[str, Any]) -> dict[str, str]:
+def validate_registration_data(
+    data: Mapping[str, Any], *, reserved_fields: tuple[str, ...] = ()
+) -> dict[str, str]:
     """Validate user-supplied form fields without embedding personal data."""
     if not isinstance(data, Mapping) or not data:
         raise InputValidationError("Dữ liệu đăng ký phải là một đối tượng JSON không rỗng.")
 
     validated: dict[str, str] = {}
-    reserved_fields = {"mobile", "captcha"}
+    reserved_field_names = {
+        DEFAULT_PHONE_FIELD.casefold(),
+        DEFAULT_VERIFICATION_CODE_FIELD.casefold(),
+        *(field.casefold() for field in reserved_fields),
+    }
     for key, value in data.items():
         if not isinstance(key, str) or not key.strip():
             raise InputValidationError("Tên trường đăng ký không được để trống.")
         normalized_key = key.strip()
-        if normalized_key.lower() in reserved_fields:
+        if normalized_key.casefold() in reserved_field_names:
             raise InputValidationError(
                 f"Không nhập trường '{normalized_key}'; trường này được lấy từ đầu vào riêng."
             )
@@ -105,6 +114,24 @@ def validate_endpoint(endpoint: str | None) -> str:
     return value
 
 
+def validate_field_names(
+    phone_field: str, verification_code_field: str
+) -> tuple[str, str]:
+    """Validate and normalize the form field names used for private inputs."""
+    if not isinstance(phone_field, str) or not phone_field.strip():
+        raise InputValidationError("Tên trường số điện thoại không được để trống.")
+    if not isinstance(verification_code_field, str) or not verification_code_field.strip():
+        raise InputValidationError("Tên trường mã xác minh không được để trống.")
+
+    normalized_phone_field = phone_field.strip()
+    normalized_code_field = verification_code_field.strip()
+    if normalized_phone_field.casefold() == normalized_code_field.casefold():
+        raise InputValidationError(
+            "Tên trường số điện thoại và mã xác minh phải khác nhau."
+        )
+    return normalized_phone_field, normalized_code_field
+
+
 def register_test(
     phone: str,
     registration_data: Mapping[str, Any],
@@ -112,10 +139,17 @@ def register_test(
     endpoint: str | None,
     *,
     timeout: float = 10,
+    phone_field: str = DEFAULT_PHONE_FIELD,
+    verification_code_field: str = DEFAULT_VERIFICATION_CODE_FIELD,
 ) -> Any:
     """Submit manually provided form data to a configured local test endpoint."""
+    phone_field, verification_code_field = validate_field_names(
+        phone_field, verification_code_field
+    )
     normalized_phone = validate_phone(phone)
-    validated_data = validate_registration_data(registration_data)
+    validated_data = validate_registration_data(
+        registration_data, reserved_fields=(phone_field, verification_code_field)
+    )
     if not isinstance(verification_code, str) or not verification_code.strip():
         raise InputValidationError("Mã xác minh không được để trống.")
     if len(verification_code.strip()) > 128:
@@ -124,8 +158,8 @@ def register_test(
 
     payload = {
         **validated_data,
-        "mobile": normalized_phone,
-        "captcha": verification_code.strip(),
+        phone_field: normalized_phone,
+        verification_code_field: verification_code.strip(),
     }
     try:
         with requests.Session() as session:
@@ -161,6 +195,12 @@ def main() -> int:
     try:
         # Check configuration before prompting for personal or verification data.
         endpoint = validate_endpoint(os.environ.get("BOT_TEST_ENDPOINT"))
+        phone_field, verification_code_field = validate_field_names(
+            os.environ.get("BOT_TEST_PHONE_FIELD", DEFAULT_PHONE_FIELD),
+            os.environ.get(
+                "BOT_TEST_CODE_FIELD", DEFAULT_VERIFICATION_CODE_FIELD
+            ),
+        )
         phone = input("Số điện thoại: ")
         data_text = input("Dữ liệu đăng ký (đối tượng JSON): ")
         try:
@@ -169,7 +209,14 @@ def main() -> int:
             raise InputValidationError("Dữ liệu đăng ký không phải JSON hợp lệ.") from exc
         verification_code = getpass.getpass("Nhập mã xác minh: ")
 
-        register_test(phone, registration_data, verification_code, endpoint)
+        register_test(
+            phone,
+            registration_data,
+            verification_code,
+            endpoint,
+            phone_field=phone_field,
+            verification_code_field=verification_code_field,
+        )
         print("Đã gửi request đến dịch vụ kiểm thử và nhận được phản hồi JSON.")
         return 0
     except (BotError, EOFError, KeyboardInterrupt) as exc:

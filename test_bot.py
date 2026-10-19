@@ -84,6 +84,66 @@ class RegisterRequestTests(unittest.TestCase):
         self.assertFalse(kwargs["allow_redirects"])
 
     @patch("bot.requests.Session")
+    def test_posts_custom_phone_and_verification_code_fields(self, session_factory):
+        session_factory.return_value = self.session_context
+
+        result = register_test(
+            "0912345678",
+            {"nickname": "tester"},
+            "manual-code",
+            "http://localhost:8000/register",
+            phone_field="phone_number",
+            verification_code_field="verification_code",
+        )
+
+        self.assertEqual(result, {"accepted": True})
+        _, kwargs = self.session.post.call_args
+        self.assertEqual(
+            kwargs["files"],
+            {
+                "nickname": (None, "tester"),
+                "phone_number": (None, "84912345678"),
+                "verification_code": (None, "manual-code"),
+            },
+        )
+
+    @patch("bot.requests.Session")
+    def test_custom_field_names_cannot_conflict_or_bypass_loopback_check(
+        self, session_factory
+    ):
+        session_factory.return_value = self.session_context
+
+        with self.assertRaises(InputValidationError):
+            register_test(
+                "0912345678",
+                {"phone_number": "other"},
+                "manual-code",
+                "http://localhost/register",
+                phone_field="phone_number",
+                verification_code_field="verification_code",
+            )
+        with self.assertRaises(InputValidationError):
+            register_test(
+                "0912345678",
+                {"nickname": "tester"},
+                "manual-code",
+                "http://localhost/register",
+                phone_field="same",
+                verification_code_field="same",
+            )
+        with self.assertRaises(EndpointConfigurationError):
+            register_test(
+                "0912345678",
+                {"nickname": "tester"},
+                "manual-code",
+                "https://example.com/register",
+                phone_field="phone_number",
+                verification_code_field="verification_code",
+            )
+
+        self.session.post.assert_not_called()
+
+    @patch("bot.requests.Session")
     def test_invalid_input_or_endpoint_never_sends_request(self, session_factory):
         session_factory.return_value = self.session_context
 
@@ -195,6 +255,37 @@ class CommandLineTests(unittest.TestCase):
                 "nickname": (None, "tester"),
                 "mobile": (None, "84912345678"),
                 "captcha": (None, "manual-code"),
+            },
+        )
+
+    def test_cli_uses_custom_field_names_from_environment(self):
+        endpoint = "http://127.0.0.1:8080/register"
+        environment = {
+            "BOT_TEST_ENDPOINT": endpoint,
+            "BOT_TEST_PHONE_FIELD": "phone_number",
+            "BOT_TEST_CODE_FIELD": "verification_code",
+        }
+        with (
+            patch.dict(os.environ, environment, clear=True),
+            patch(
+                "builtins.input",
+                side_effect=["0912345678", '{"nickname": "tester"}'],
+            ),
+            patch("bot.getpass.getpass", return_value="manual-code"),
+            patch("bot.requests.Session", return_value=self.session_context),
+            redirect_stdout(StringIO()),
+            redirect_stderr(StringIO()),
+        ):
+            result = main()
+
+        self.assertEqual(result, 0)
+        _, kwargs = self.session.post.call_args
+        self.assertEqual(
+            kwargs["files"],
+            {
+                "nickname": (None, "tester"),
+                "phone_number": (None, "84912345678"),
+                "verification_code": (None, "manual-code"),
             },
         )
 

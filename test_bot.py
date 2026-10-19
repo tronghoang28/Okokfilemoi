@@ -1,4 +1,7 @@
+import os
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
+from io import StringIO
 from unittest.mock import MagicMock, patch
 
 import requests
@@ -7,6 +10,7 @@ from bot import (
     EndpointConfigurationError,
     InputValidationError,
     RegistrationRequestError,
+    main,
     register_test,
     validate_endpoint,
     validate_phone,
@@ -148,6 +152,76 @@ class RegisterRequestTests(unittest.TestCase):
                 "code",
                 "http://localhost/register",
             )
+
+
+class CommandLineTests(unittest.TestCase):
+    def setUp(self):
+        self.session = MagicMock()
+        self.session_context = MagicMock()
+        self.session_context.__enter__.return_value = self.session
+        self.session_context.__exit__.return_value = False
+        self.session.post.return_value = MagicMock(
+            status_code=200,
+            json=MagicMock(return_value={"accepted": True}),
+        )
+
+    def test_cli_uses_manual_inputs_and_configured_local_endpoint(self):
+        endpoint = "http://127.0.0.1:8080/register"
+        with (
+            patch.dict(os.environ, {"BOT_TEST_ENDPOINT": endpoint}, clear=True),
+            patch(
+                "builtins.input",
+                side_effect=["0912345678", '{"nickname": "tester"}'],
+            ) as input_mock,
+            patch("bot.getpass.getpass", return_value="manual-code") as getpass_mock,
+            patch("bot.requests.Session", return_value=self.session_context),
+            redirect_stdout(StringIO()),
+            redirect_stderr(StringIO()),
+        ):
+            result = main()
+
+        self.assertEqual(result, 0)
+        self.assertEqual(
+            [call.args[0] for call in input_mock.call_args_list],
+            ["Số điện thoại: ", "Dữ liệu đăng ký (đối tượng JSON): "],
+        )
+        getpass_mock.assert_called_once_with("Nhập mã xác minh: ")
+        self.session.post.assert_called_once()
+        args, kwargs = self.session.post.call_args
+        self.assertEqual(args[0], endpoint)
+        self.assertEqual(
+            kwargs["files"],
+            {
+                "nickname": (None, "tester"),
+                "mobile": (None, "84912345678"),
+                "captcha": (None, "manual-code"),
+            },
+        )
+
+    def test_missing_or_disallowed_endpoint_exits_before_input_or_request(self):
+        cases = [
+            ("missing endpoint", {}),
+            (
+                "non-loopback endpoint",
+                {"BOT_TEST_ENDPOINT": "https://example.com/register"},
+            ),
+        ]
+        for name, environment in cases:
+            with self.subTest(name=name):
+                with (
+                    patch.dict(os.environ, environment, clear=True),
+                    patch("builtins.input") as input_mock,
+                    patch("bot.getpass.getpass") as getpass_mock,
+                    patch("bot.requests.Session") as session_factory,
+                    redirect_stdout(StringIO()),
+                    redirect_stderr(StringIO()),
+                ):
+                    result = main()
+
+                self.assertEqual(result, 1)
+                input_mock.assert_not_called()
+                getpass_mock.assert_not_called()
+                session_factory.assert_not_called()
 
 
 if __name__ == "__main__":

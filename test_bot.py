@@ -314,6 +314,70 @@ class CommandLineTests(unittest.TestCase):
                 getpass_mock.assert_not_called()
                 session_factory.assert_not_called()
 
+    def test_cli_reports_request_failures_without_traceback_or_network(self):
+        cases = [
+            (
+                "timeout",
+                requests.Timeout("private timeout details"),
+                MagicMock(),
+                "Dịch vụ kiểm thử hết thời gian chờ.",
+            ),
+            (
+                "connection failure",
+                requests.ConnectionError("private connection details"),
+                MagicMock(),
+                "Không thể kết nối đến dịch vụ kiểm thử cục bộ.",
+            ),
+            (
+                "HTTP error",
+                None,
+                MagicMock(status_code=503),
+                "Dịch vụ kiểm thử trả về lỗi HTTP 503.",
+            ),
+            (
+                "invalid JSON",
+                None,
+                MagicMock(
+                    status_code=200,
+                    json=MagicMock(side_effect=ValueError("private response details")),
+                ),
+                "Dịch vụ kiểm thử trả về nội dung không phải JSON (HTTP 200).",
+            ),
+        ]
+        for name, post_error, response, expected_error in cases:
+            with self.subTest(failure=name):
+                self.session.post.reset_mock()
+                self.session.post.side_effect = post_error
+                self.session.post.return_value = response
+                stderr = StringIO()
+                stdout = StringIO()
+
+                with (
+                    patch.dict(
+                        os.environ,
+                        {"BOT_TEST_ENDPOINT": "http://127.0.0.1:8080/register"},
+                        clear=True,
+                    ),
+                    patch(
+                        "builtins.input",
+                        side_effect=["0912345678", '{"nickname": "tester"}'],
+                    ),
+                    patch("bot.getpass.getpass", return_value="manual-code"),
+                    patch(
+                        "bot.requests.Session", return_value=self.session_context
+                    ) as session_factory,
+                    redirect_stdout(stdout),
+                    redirect_stderr(stderr),
+                ):
+                    result = main()
+
+                self.assertEqual(result, 1)
+                self.assertEqual(stderr.getvalue(), expected_error + "\n")
+                self.assertNotIn("Traceback", stderr.getvalue())
+                self.assertEqual(stdout.getvalue(), "")
+                session_factory.assert_called_once_with()
+                self.session.post.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()

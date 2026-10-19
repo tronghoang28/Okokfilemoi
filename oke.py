@@ -2,12 +2,14 @@
 import os
 import re
 import random
+import sys
 import requests
 import time
 import uuid
 import base64
 import hashlib
 import json
+import base64
 import io
 from typing import Optional, Any
 from urllib.parse import urlparse
@@ -66,7 +68,6 @@ def _banana_rnd_key():
         )
     )
 def _load_proxy():
-    """Đọc proxy từ proxies.txt. Không có proxy thì trả None."""
     try:
         with open(_PROXY_FILE, "r", encoding="utf-8") as f:
             proxies = [
@@ -103,7 +104,6 @@ def _banana_send(
     url: str,
     loan_name: str,
     label: str,
-    use_proxy: bool = True,
 ) -> bool:
     parsed = urlparse(url)
     origin = f"{parsed.scheme}://{parsed.netloc}"
@@ -146,9 +146,6 @@ def _banana_send(
 
     event_url = f"{origin}/app-domain/api/burying/unauthenticated/event"
 
-    proxy = _load_proxy() if use_proxy else None
-    proxies = _proxy_dict(proxy)
-
     try:
         with requests.Session() as session:
             session.verify = False
@@ -175,8 +172,6 @@ def _banana_send(
                             k1,
                         )
                     },
-                    timeout=8,
-                    proxies=proxies,
                 )
 
             except Exception:
@@ -198,7 +193,6 @@ def _banana_send(
                     ),
                 },
                 timeout=20,
-                proxies=proxies,
             )
 
         try:
@@ -234,7 +228,6 @@ def _banana_send(
                 url,
                 loan_name,
                 label,
-                use_proxy=False,
             )
 
         print(f"[{label}] ERR {type(e).__name__}: {e}")
@@ -494,22 +487,15 @@ def tiennhanh_send(phone, use_proxy: bool = True):
         return {}
 
 
-WEB_ORIGIN = "https://web.cash-lemon.com"
-API_ORIGIN = "https://api.cash-lemon.com"
+
+WEB_ORIGIN = "https://m.vtmvn.com"
+API_ORIGIN = "https://api.vtmvn.com"
 FINGERPRINT_ORIGIN = "https://dfp-vn.xuanjirc.com"
-FINGERPRINT_ORGANIZATION = "2022072009308201"
+FINGERPRINT_ORGANIZATION = "20251023141800"
 PRODUCT_ID = "20003"
-CHANNEL_CODE = "H1h82"
+
 SALT_TTL_MS = 10_000
 
-USER_AGENT = os.getenv(
-    "LEMON_USER_AGENT",
-    (
-        "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) "
-        "AppleWebKit/605.1.15 (KHTML, like Gecko) "
-        "Version/18.1 Mobile/15E148 Safari/604.1"
-    ),
-)
 
 _session = requests.Session()
 _session.headers.update(
@@ -517,13 +503,15 @@ _session.headers.update(
         "Accept": "*/*",
         "Origin": WEB_ORIGIN,
         "Referer": f"{WEB_ORIGIN}/",
-        "User-Agent": USER_AGENT,
+        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148",
         "Accept-Language": "vi-VN,vi;q=0.9",
     }
 )
 _fingerprint: str | None = None
 _salt = ""
 _salt_timestamp = 0
+
+candidates: list[str] = []
 
 def _json_response(response: requests.Response) -> dict[str, Any] | None:
 
@@ -535,7 +523,7 @@ def _json_response(response: requests.Response) -> dict[str, Any] | None:
     padded = text + "=" * (-len(text) % 4)
     if re.fullmatch(r"[A-Za-z0-9+/]+={0,2}", padded):
         try:
-            candidates.append(base64.b64decode(padded, validate=True).decode("utf-8"))
+         candidates.append(base64.b64decode(padded, validate=True).decode("utf-8"))
         except (ValueError, UnicodeDecodeError):
             pass
 
@@ -552,7 +540,7 @@ def _json_response(response: requests.Response) -> dict[str, Any] | None:
 def _fingerprint_device_data() -> dict[str, Any]:
     return {
         "webSmartId": uuid.uuid4().hex,
-        "userAgent": USER_AGENT,
+        "userAgent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148",
         "webdriver": "",
         "browserLanguage": "vi-VN",
         "scrColorDepth": 24,
@@ -614,13 +602,14 @@ def _get_fingerprint() -> str:
         data = json.loads(match.group(1))
     else:
         data = json.loads(response.text)
+
     value = data.get("dfp") if isinstance(data, dict) else None
     if not value:
         raise RuntimeError("Fingerprint service không trả về dfp")
 
     _fingerprint = str(value)
     _session.cookies.set(
-        "KZ_FINGER", _fingerprint, domain=".cash-lemon.com", path="/"
+        "KZ_FINGER", _fingerprint, domain=".vtmvn.com", path="/"
     )
     return _fingerprint
 
@@ -684,19 +673,19 @@ def _base_payload(phone: str, biz_params: dict[str, Any]) -> dict[str, Any]:
             "deviceType": "h5",
             "deviceIdKh": fingerprint,
             "termSysVersion": "18.1",
-            "termModel": "iPhone",
-            "brand": "Apple Computer, Inc.",
+            "termModel": "",
+            "brand": "Apple",
             "isPwa": 0,
             "imei": "",
             "termId": None,
             "appType": "6",
-            "appVersion": "3.1.7",
+            "appVersion": "3.1.10",
             "pValue": "",
             "lon": "",
             "lat": "",
             "bizType": "0000",
-            "appName": "Lemon Cash",
-            "packageName": "com.lemoncashvn.web",
+            "appName": "Vay Thoải Mái",
+            "packageName": "com.antinvn.h5",
             "screenResolution": "1170,2532",
         },
         "clientTypeFlag": "h5",
@@ -799,7 +788,7 @@ def send_sms_code(phone: str, code: str | None = None) -> bool:
             "phoneNum": phone,
             "code": code,
             "type": 200,
-            "channelCode": CHANNEL_CODE,
+            "channelCode": "H1h82"
         },
     )
     try:
@@ -868,43 +857,6 @@ if __name__ == "__main__":
         sys.exit(1)
 
     phone = sys.argv[1]
-
-    print("=== TEST ===")
-
-    print("\n[1] FVbanana")
-    print(sent(phone))
-
-    time.sleep(20)
-
-    print("\n[2] mfast_1")
-    print(mfast_1(phone))
-
-    time.sleep(20)
-
-    print("\n[3] call1")
-    print(call1(phone))
-
-    time.sleep(20)
-
-    print("\n[4] mfast")
-    print(mfast(phone))
-
-    time.sleep(20)
-
-    print("\n[5] tiennhanh_check")
-    print(tiennhanh_check(phone))
-
-    time.sleep(20)
-
-    print("\n[6] tiennhanh_send")
-    print(tiennhanh_send(phone))
-
-    time.sleep(20)
-
-    print("\n[7] tientay_check")
-    print(tientay24(phone))
-
-    time.sleep(20)
 
     print("\n[8] fistgo_send")
     print(send_sms_code(phone))
